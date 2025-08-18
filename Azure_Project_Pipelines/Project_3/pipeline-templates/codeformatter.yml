@@ -1,0 +1,12 @@
+steps:
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: 'Run Black - Code Formatter'
+    inputs:
+      script: |
+        set -euo pipefail
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install black
+        black $(Build.SourcesDirectory)/sources/$(microservice)/Databricks/Functions
+        deactivate

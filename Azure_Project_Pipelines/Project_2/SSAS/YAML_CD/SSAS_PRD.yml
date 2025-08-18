@@ -1,0 +1,122 @@
+# CI-CD for SSAS 
+variables:
+ - group: CICD_VARIABLES
+
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - SSAS/*
+
+pool:
+  vmImage: 'windows-latest'
+  
+stages:
+- stage: Build
+  displayName: Validate_stage
+  jobs:
+    - job: SSAS_Build_Deploy
+      displayName: 'SSAS Compilation'
+      steps:
+
+ 
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-p-56626-kv-01'
+
+## Replace the Values w.r.t PRD
+        - task: CmdLine@2
+          displayName: 'Replace Values'
+          inputs:
+            script: |
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sql-dev-01/bnlwe-fr01-p-56626-pa01-sql-prd-01/'  $(System.DefaultWorkingDirectory)/SSAS/Model.bim
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-01/bnlwe-fr01-p-56626-pa01-sqldb-prd-01/' $(System.DefaultWorkingDirectory)/SSAS/Model.bim
+              sed -i 's/bnlwe-fr01-d-56690-pa01-aasdb-dev-01/bnlwe-fr01-p-56626-pa01-aasdb-prd-01/' $(System.DefaultWorkingDirectory)/SSAS/Model.bim
+              sed -i "s/USER_NAME/$(PRDSSISUSERNAME)/" $(System.DefaultWorkingDirectory)/SSAS/Model.bim
+              sed -i "s/PASS_WORD/$(PRDSSISPASSWORD)/" $(System.DefaultWorkingDirectory)/SSAS/Model.bim
+
+## Archieve Files
+        - task: ArchiveFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/SSAS/Model.bim'
+            archiveType: zip
+            archiveFile: '$(System.DefaultWorkingDirectory)/SSAS.zip'
+            replaceExistingArchive: true
+
+## Publish Files
+        - publish: $(System.DefaultWorkingDirectory)/SSAS.zip
+          displayName: 'Publish artifact'
+          artifact: SSAS
+
+## Deploy SSAS
+        - task: deploy-aas-db@1
+          displayName: 'Deploy Model'
+          inputs:
+            connectedServiceNameARM: 'ACS_Food_Solution_Dev_SPN'
+            aasServer: 'asazure://westeurope.asazure.windows.net/bnlwefr01p56626pa01aasprd01'
+            databaseName: 'bnlwe-fr01-p-56626-pa01-aasdb-prd-01'
+            loginType: spn
+            tenantId: $(TenantId)
+            appId: $(AppId)
+            appKey: $(AppKey)
+            pathToModel: '$(System.DefaultWorkingDirectory)/SSAS/Model.bim'
+            partitionDeployment: deploypartitions
+            roleDeployment: deployrolesandmembers
+            connectionType: sql
+            sourceSQLServer:  $(ssassqlserver)
+            sourceSQLDatabase: $(dbname)
+            sourceSQLUsername: $(PRDSSISUSERNAME)
+            sourceSQLPassword: $(PRDSSISPASSWORD)
+            
+
+#################
+
+- stage: Archive
+  dependsOn: Build
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'TAG Artifact'
+      pool: 
+       vmImage: 'ubuntu-latest'
+      steps:
+       - template: ../../preliminary-steps.yml
+         parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'SSASPRD'
+
+## TAG RESOURCES
+       - task: AzureCLI@2
+         displayName: 'Tagging SSAS on Azure Cloud'
+         continueOnError: false
+         inputs:
+          azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+          scriptLocation: 'inlineScript'
+          scriptType: 'bash'
+          inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.AnalysisServices/servers/$(ssasserver) \
+            --tags version=$(newVersion)
+
+## Applying TAG to a repo
+       - task: CmdLine@2
+         displayName: 'TAG REPO'
+         env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+         inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

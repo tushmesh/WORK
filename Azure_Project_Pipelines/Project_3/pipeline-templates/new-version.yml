@@ -1,0 +1,97 @@
+parameters:
+  - name: env
+    type: string
+steps:
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: 'Version Type identification'
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mCalculating version type minor/fix\e[0m"
+        source .localPy3Env/bin/activate
+        newVersionType=""
+        new_version=""
+        case $(Build.SourceBranchName) in
+
+          develop)
+             newVersionType="minor"
+            ;;
+          hotfix/*)
+            newVersionType="fix"
+            ;;
+          releasefix/*)
+            newVersionType="fix"
+            ;;
+          release/*)
+            newVersionType="minor"
+            ;;
+          *)
+            newVersionType="minor"
+            ;;
+        esac
+        echo "$newVersionType" | tee .newVersionType
+
+
+  - ${{ if eq(parameters.env, 'Dev') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) | tee .response
+              
+  - ${{ if eq(parameters.env, 'QA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) | tee .response
+              
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscriptionprd)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) | tee .response
+              
+              
+  - task: CmdLine@2
+    displayName: 'Calculating new version'
+    continueOnError: false
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mCalculating new Azure Cloud version\e[0m"
+        declare -a TAGLIST
+        newVersionType=$(cat .newVersionType)
+        source .localPy3Env/bin/activate
+        python scripts/python/read_az_version_tag.py
+        if [[ "$(cat taglist.lst)" == "None" ]]; then
+          new_version="1.0.0"
+        else
+          currVer=$(cat taglist.lst)
+          new_version="$(python scripts/python/get_new_version.py --versions ${currVer} --type $newVersionType --sprint $(currentRelease))"
+        fi
+        echo -e "\e[1mNew calculated version is: $new_version\e[0m"
+        echo "$new_version" | tee .new_version

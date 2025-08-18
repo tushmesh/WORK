@@ -1,0 +1,152 @@
+# CI for ADF validation and exporting an ARM Template to deploy
+
+variables:
+ - group: CICD_VARIABLES
+trigger:
+  branches:
+    include:
+    - QA
+  paths:
+    include:
+    - ADF/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Validate_stage
+  displayName: Validate_stage
+  jobs:
+    - job: ARM_Validation
+      displayName: 'ARM Template Validation and Deployment'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - template: ../../preliminary-steps.yml
+          parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'ADFQA'
+
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+
+# Installs Node and the npm packages
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '10.x'
+          displayName: 'Install Node.js'
+   
+        - task: Npm@1
+          inputs:
+            command: 'install'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            verbose: true
+          displayName: 'Install npm package'
+
+# Validates all of the Data Factory resources in the repository.
+        - task: Npm@1
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/ADF /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
+          displayName: 'Validate' 
+          
+# Validate and Generate ARM Template. 
+        - task: Npm@1
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            customCommand: 'run build export $(System.DefaultWorkingDirectory)/ADF /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) "ArmTemplate"'
+          displayName: 'Validate and Generate ARM template' 
+
+## Replace the value of the Newly created ARM Template
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i 's/bnlwe-fr01-d-56690-pa01-adf-01/bnlwe-fr01-n-56690-pa01-adf-01/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/Frontier-FS-SSISIR-Dev/Frontier-FS-SSISIR-QA/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sql-dev-01/bnlwe-fr01-n-56690-pa01-sql-lqa-01/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/UNLDevAdmin/UNLQAdmin/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/prod-226.westeurope/prod-166.westeurope/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/1a8d4cf2400c487c8ee3e8ad97aa311b/bce71587ffe04cbb9633663aeb1424ad/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/mhhdvI7Jr8ZVU6A0MqPc4mQmt00tY6O6GqMDOwFc_zI/8x38mg5x96cQSTBx19__sOwVtegZPEm8waGRufdM9dw/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/X1LiF6yNGaMCXNYGbAgB2m5snppcR9cv6ucs6Ew5o9w/8z8GRNGNlHVVnp4g91Ak7HavBv6H1ASKNcWmo91Y-7Y/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/prod-229.westeurope/prod-183.westeurope/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/df91498921e443328548d891fae7d6f0/cfb21a30e69d45158ede159ac016d73c/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/prod-136.westeurope/prod-141.westeurope/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/a7697c853e0b4a6584311a0f09642945/00a847670d9c4bee8806931c4b256310/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/e3t3FtLDcFXzFCLTUweIcMr-PKCRpg6Z1E7ZNudoSek/mMTW8D-QkEQZ_Mh0l0ngCQBn4pUeRnjs4YD_mPGYuAE/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/Standard_D2_v3/Standard_D8_v3/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/DWConnectionStrings/DWLQAConnectionStrings/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/LogConnectionStrings/LogLQAConnectionStrings/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/STGConnectionStrings/STGLQAConnectionStrings/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i 's/DEVBlob/LQABlob/' $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/SFTPPASS/$(LQASFTPPASSWORD)/" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/PASSWORD/$(LQASSISPASSWORD)/" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/USERNAME/$(LQASSISUSERNAME)/" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHHOST/$(BLACKSMITHHOST)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHPORT/$(BLACKSMITHPORT)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHUSER/$(BLACKSMITHUSER)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+
+# ADF Deployment
+        - task: AzureResourceGroupDeployment@2
+          displayName: 'Data Factory Dev ARM Deploy'
+          inputs:
+           azureSubscription: ACS_Food_Solution_Dev_SPN
+           resourceGroupName: $(resgroup)
+           location: $(dataFactory_location)
+           csmFile: $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateForFactory.json
+           csmParametersFile: $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json
+           deploymentMode: Incremental
+           deploymentName: '$(DataFactoryName)'
+           
+## TAG RESOURCES
+        - task: AzureCLI@2
+          displayName: 'Tagging ADF on Azure Cloud'
+          continueOnError: false
+          inputs:
+           azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+           scriptLocation: 'inlineScript'
+           scriptType: 'bash'
+           inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) \
+              --tags version=$(newVersion)
+
+# Zipping the files
+
+        - task: ArchiveFiles@2
+          continueOnError: false
+          displayName: 'Artifact Creation'
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/'
+            archiveType: zip
+            includeRootFolder: false
+            archiveFile: '$(System.DefaultWorkingDirectory)/$(arfname).zip'
+
+        - publish: $(System.DefaultWorkingDirectory)/$(arfname).zip
+          displayName: 'Publish artifact'
+          artifact: ARMTemplate
+
+## Applying TAG to a repo
+        - task: CmdLine@2
+          displayName: 'TAG REPO'
+          env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

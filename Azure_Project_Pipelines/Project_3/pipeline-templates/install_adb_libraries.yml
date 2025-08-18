@@ -1,0 +1,35 @@
+## Install Databricks Libraries
+
+steps:
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: "Initializing python virtual environment"
+    inputs:
+      script: |
+        set -euo pipefail
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+
+  - task: AzureKeyVault@1
+    inputs:
+      azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+      KeyVaultName: 'iactpm-payment-kv-dev' 
+
+  - task: configuredatabricks@0
+    displayName: 'Configure Databricks CLI'
+    inputs:
+      url: '$(databricksWspUrl)'
+      token: $(PAT-DATABRICKS)
+
+  - task: startcluster@0
+    displayName: 'Deploy Notebooks to Workspace'
+    inputs:
+      clusterid: '1007-152200-wage924'
+  - task: executenotebook@0
+    inputs:
+      notebookPath: 'NOTEBOOK PATH'
+      existingClusterId: '1007-152200-wage924'
+
+  - task: waitexecution@0
+    displayName: 'Wait for Notebook execution'

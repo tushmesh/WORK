@@ -1,0 +1,43 @@
+# ADF Validation will run on PR and before merge
+
+trigger:
+- none
+pool:
+  vmImage: 'ubuntu-latest'
+  
+stages:
+- stage: Validate_stage
+  displayName: Validate_stage
+
+  jobs:
+    - job: ADFValidation
+      displayName: ADF ARM Validation
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - template: ../../preliminary-steps.yml
+        parameters:
+          cicdChain: 'CI'
+          infoPath: 'info.yaml'
+          env: 'ADFDEV'
+              
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '10.x'
+        displayName: 'Install Node.js'
+
+# Installs Node and the npm packages
+      - task: Npm@1
+        inputs:
+          command: 'install'
+          workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+          verbose: true
+        displayName: 'Install npm package'
+
+# Validates all of the Data Factory resources in the repository.
+      - task: Npm@1
+        inputs:
+          command: 'custom'
+          workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+          customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/ADF/ /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
+        displayName: 'Validate'

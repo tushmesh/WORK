@@ -1,0 +1,576 @@
+parameters:
+  - name: env
+    type: string
+steps:
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: 'Version Type identification'
+    inputs:
+      script: |
+        set -euo pipefail
+        cd $(Build.SourcesDirectory)/Deployment/YAML/
+        echo -e "\e[1mCalculating version type minor/fix\e[0m"
+        #source .localPy3Env/bin/activate
+        newVersionType=""
+        new_version=""
+        case $(Build.SourceBranchName) in
+
+          develop)
+             newVersionType="minor"
+            ;;
+          hotfix/*)
+            newVersionType="fix"
+            ;;
+          releasefix/*)
+            newVersionType="fix"
+            ;;
+          release/*)
+            newVersionType="minor"
+            ;;
+          *)
+            newVersionType="minor"
+            ;;
+        esac
+        echo "$newVersionType" | tee .newVersionType
+
+
+  - ${{ if eq(parameters.env, 'SSISDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(ssisserver)/databases/$(ssisdb) | tee .response
+
+  - ${{ if eq(parameters.env, 'SSISQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(ssisserver)/databases/$(ssisdb) | tee .response
+              
+  - ${{ if eq(parameters.env, 'SSISPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(ssisserver)/databases/$(ssisdb) | tee .response
+
+
+  - ${{ if eq(parameters.env, 'SSASDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.AnalysisServices/servers/$(ssasserver) | tee .response
+
+        
+  - ${{ if eq(parameters.env, 'SSASQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.AnalysisServices/servers/$(ssasserver) | tee .response
+              
+        
+  - ${{ if eq(parameters.env, 'SSASPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.AnalysisServices/servers/$(ssasserver) | tee .response
+              
+  - ${{ if eq(parameters.env, 'WEBDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(website) | tee .response
+
+  - ${{ if eq(parameters.env, 'WEBQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(website) | tee .response
+            
+  - ${{ if eq(parameters.env, 'WEBPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Web/sites/$(website) | tee .response
+            
+  - ${{ if eq(parameters.env, 'SQLSTGDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(devsqlserver)/databases/$(dbname) | tee .response
+              
+  - ${{ if eq(parameters.env, 'SQLSTGQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(qasqlserver)/databases/$(dbname) | tee .response
+              
+  - ${{ if eq(parameters.env, 'SQLSTGPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(prdsqlserver)/databases/$(dbname) | tee .response
+
+
+  - ${{ if eq(parameters.env, 'SQLLOGDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(devsqlserver)/databases/$(dbname) | tee .response
+              
+  - ${{ if eq(parameters.env, 'SQLLOGQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(qasqlserver)/databases/$(dbname) | tee .response
+
+  - ${{ if eq(parameters.env, 'SQLLOGPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(prdsqlserver)/databases/$(dbname) | tee .response
+            
+
+  - ${{ if eq(parameters.env, 'SQLDMDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(devsqlserver)/databases/$(dbname) | tee .response
+
+  - ${{ if eq(parameters.env, 'SQLDMQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(qasqlserver)/databases/$(dbname) | tee .response
+
+  - ${{ if eq(parameters.env, 'SQLDMPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(prdsqlserver)/databases/$(dbname) | tee .response
+
+
+  - ${{ if eq(parameters.env, 'SQLDWDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(devsqlserver)/databases/$(dbname) | tee .response
+
+  - ${{ if eq(parameters.env, 'SQLDWQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(qasqlserver)/databases/$(dbname) | tee .response
+
+  - ${{ if eq(parameters.env, 'SQLDWPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(prdsqlserver)/databases/$(dbname) | tee .response
+
+
+  - ${{ if eq(parameters.env, 'ADFDEV') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) | tee .response
+
+  - ${{ if eq(parameters.env, 'ADFQA') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) | tee .response
+
+  - ${{ if eq(parameters.env, 'ADFPRD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) | tee .response
+
+
+  - ${{ if eq(parameters.env, 'LA_GLO_Dev_Cn_01') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_Dev_Cn_01 | tee .response
+              
+  - ${{ if eq(parameters.env, 'LA_GLO_QA_Cn_01') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_QA_Cn_01 | tee .response
+
+  - ${{ if eq(parameters.env, 'LA_GLO_PRD_Cn_01') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_PRD_Cn_01 | tee .response
+
+
+  - ${{ if eq(parameters.env, 'LA_GLO_Dev_Cn_02') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_Dev_Cn_02 | tee .response
+
+  - ${{ if eq(parameters.env, 'LA_GLO_QA_Cn_02') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_QA_Cn_02 | tee .response
+
+  - ${{ if eq(parameters.env, 'LA_GLO_PRD_Cn_02') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_PRD_Cn_02 | tee .response
+
+  - ${{ if eq(parameters.env, 'LA_GLO_Dev_Cn_03') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_Dev_Cn_03 | tee .response
+
+  - ${{ if eq(parameters.env, 'LA_GLO_QA_Cn_03') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_QA_Cn_03 | tee .response
+              
+  - ${{ if eq(parameters.env, 'LA_GLO_PRD_Cn_03') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_PRD_Cn_03 | tee .response
+
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: AzureCLI@2
+      displayName: 'Reading Azure Cloud version tag'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'PROD'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            cd $(Build.SourcesDirectory)/Deployment/YAML/
+            echo -e "\e[1mReading resource tag on Azure\e[0m"
+            az tag list \
+              --resource-id /subscriptions/$(azureSubscriptionprd)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) | tee .response
+              
+              
+  - task: CmdLine@2
+    displayName: 'Calculating new version'
+    continueOnError: false
+    inputs:
+      script: |
+        set -euo pipefail
+        cd $(Build.SourcesDirectory)/Deployment/YAML/
+        echo -e "\e[1mCalculating new Azure Cloud version\e[0m"
+        declare -a TAGLIST
+        newVersionType=$(cat .newVersionType)
+        #source .localPy3Env/bin/activate
+        python scripts/python/read_az_version_tag.py
+        if [[ "$(cat taglist.lst)" == "None" ]]; then
+          new_version="1.0.0"
+        else
+          currVer=$(cat taglist.lst)
+          new_version="$(python scripts/python/get_new_version.py --versions ${currVer} --type $newVersionType --sprint $(currentRelease))"
+        fi
+        echo -e "\e[1mNew calculated version is: $new_version\e[0m"
+        echo "$new_version" | tee .new_version

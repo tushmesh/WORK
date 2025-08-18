@@ -1,0 +1,131 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger: none
+
+parameters:
+  - name: version
+    type: string
+  - name: tagnumber
+    type: string
+  - name: environment
+    values:
+      - QA
+      - PROD
+
+variables:
+  - group: CICD_VARIABLES
+  - name: 'packagePrefix'
+    value: 'tim-actpm-integration-oi-discount'
+  - name: 'projectFeed'
+    value: 'OI-discount'
+  - name: 'microservice'
+    value: 'tim-actpm-integration-OI-discount'
+
+stages:
+  - stage: CD
+    displayName: "CD"
+    jobs:
+      - deployment: Approval
+        displayName: 'Awaiting for Approval'
+        environment: ${{parameters.environment}}
+      - job: "Pool"
+        steps:
+        - ${{ if eq(parameters.environment, 'PROD') }}:
+          - task: CmdLine@2
+            name: 'POOL'
+            inputs:
+              script: |
+                poolname='OI-Discount PROD'
+                echo "##vso[task.setvariable variable=poolname;isOutput=true]$poolname"
+        - ${{ if eq(parameters.environment, 'QA') }}:
+          - task: CmdLine@2
+            name: 'POOL'
+            inputs:
+              script: |
+                poolname='OI-Discount pool'
+                echo "##vso[task.setvariable variable=poolname;isOutput=true]$poolname"
+      - job: "CD"
+        dependsOn: Pool
+        variables:
+          poolname: $[ Dependencies.Pool.outputs['POOL.poolname']]
+        pool: $(poolname)
+        steps:
+          - task: CmdLine@2
+            displayName: 'Azure artifact download'
+            env:
+              SYS_ACCESS_TOKEN: $(System.AccessToken)
+            inputs:
+                script: |
+                    set -euovx pipefail
+                    echo -e "\e[1mLogging into Azure Devops\e[0m"
+                    az config set extension.use_dynamic_install=yes_without_prompt
+                    rm -rf package
+                    echo ${SYS_ACCESS_TOKEN} | az devops login
+                    az devops configure --defaults organization=$(AZ_ORG_NAME) project=$(AZ_PRJ_NAME) --use-git-aliases true
+                    az artifacts universal download \
+                    --organization $(AZ_ORG_NAME)  --project $(AZ_PRJ_NAME) \
+                    --scope project --feed $(projectFeed) --name $(packagePrefix) --version ${{parameters.version}} --path ./package
+                    cd package
+                    pwd
+                    unzip $(packagePrefix)_verify_updated.zip
+                    ls -la
+                    mkdir functionapp
+                    mkdir databricks
+                    mv $(packagePrefix)-functionapp.zip functionapp/
+                    mv $(packagePrefix)-databricks.zip databricks/
+                    cd databricks
+                    unzip $(packagePrefix)-databricks.zip
+                    cd Functions
+                    if [ "${{parameters.environment}}" = "QA" ]; then
+                        sed -i 's/iactpm-payment-kv-dev/iactpm-payment-kv-qa-secret-scope/g' variables.py
+                    else
+                        sed -i 's/iactpm-payment-kv-dev/iactpm-payment-kv-prod-scope/g' variables.py
+                    fi 
+                    cd ../
+                    mkdir $(microservice)
+                    cp -f $(microservice).py $(microservice)
+                    ls -l
+                    cd ../..
+          - template: pipeline-templates/preliminary-steps.yml
+            parameters:
+              cicdChain: 'CD'
+              infoPath: 'package/info.yaml'
+              env: ${{parameters.environment}}
+
+          - template: pipeline-templates/deploy-databricks.yml
+            parameters:
+              env: ${{parameters.environment}}
+              version: ${{parameters.version}}
+              notebooksFolderPath: '$(Build.SourcesDirectory)/package/databricks/Functions'
+              notebooksFilePathmain: '$(Build.SourcesDirectory)/package/databricks/$(microservice)/'
+
+          - template: pipeline-templates/deploy-function-app.yml
+            parameters:
+              env: ${{parameters.environment}}
+              version: ${{parameters.version}}
+              packagePath: '$(Build.SourcesDirectory)/package/functionapp/$(packagePrefix)-functionapp.zip'
+              
+
+          - ${{ if eq(parameters.environment, 'QA') }}:
+            - template: pipeline-templates/merge-repository.yml
+              parameters:
+                environment: ${{parameters.environment}}
+                tagnumberRef: ${{parameters.tagnumber}}
+                dstBranchRef: release/${{parameters.version}}
+            # - template: pipeline-templates/tag-repository.yml
+              # parameters:
+                # version: ${{parameters.version}}
+
+
+          - ${{ if eq(parameters.environment, 'PROD') }}:
+            - template: pipeline-templates/merge-repository.yml
+              parameters:
+                environment: ${{parameters.environment}}
+                tagnumberRef: ${{parameters.tagnumber}}
+                dstBranchRef: main
+            #- template: pipeline-templates/tag-repository.yml
+              #parameters:
+                #version: ${{parameters.version}}

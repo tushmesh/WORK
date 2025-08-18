@@ -1,0 +1,10 @@
+redis[hiredis,search]==4.5.5
+orjson
+numpy
+pandas
+requests
+sentence-transformers
+langchain
+langchain-ollama
+redis
+redisearch

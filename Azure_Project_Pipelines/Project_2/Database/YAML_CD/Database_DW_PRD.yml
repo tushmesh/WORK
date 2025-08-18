@@ -1,0 +1,131 @@
+# DevOps CI  Pipeline
+variables:
+ - group: CICD_VARIABLES
+ 
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - Database/UFS_DW/*
+
+stages:
+- stage: Build
+  displayName: Build
+  jobs:
+
+  - job: Build
+    displayName: Build
+    timeoutInMinutes: 20
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    steps:
+    
+ ## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+           azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+           KeyVaultName: 'bnlwe-fr01-p-56626-kv-01'
+
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i "s/USER_NAME/$(PRDSSISUSERNAME)/" $(System.DefaultWorkingDirectory)/Database/UFS_DW/Security/*.sql
+              sed -i "s/PASS_WORD/$(PRDSSISPASSWORD)/" $(System.DefaultWorkingDirectory)/Database/UFS_DW/Security/*.sql
+              sed -i "s/DBMASTERKEYPWD/$(DBMASTERKEYPWD)/" $(System.DefaultWorkingDirectory)/Database/UFS_DW/Security/*.sql
+              
+        - task: PowerShell@2
+          inputs:
+            targetType: filePath
+            filePath: '$(System.DefaultWorkingDirectory)/Deployment/YAML/Database/YAML_CD/replace_prd.ps1'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/Deployment/YAML/Database/YAML_CD'
+        - task: cmdLine@2
+          displayName: 'Rename File'
+          inputs:
+            script: |
+                mv "$(System.DefaultWorkingDirectory)/Database/UFS_DW/External Resources/bnlwe_fr01_d_56690_pa01_sqldb_dev_02.sql" "$(System.DefaultWorkingDirectory)/Database/UFS_DW/External Resources/bnlwe_fr01_p_56626_pa01_sqldb_prd_02.sql"
+
+## Compilation for UFS_DW
+        - task: MSBuild@1
+          displayName: 'MS Build'
+          inputs:
+            solution: $(System.DefaultWorkingDirectory)/Database/UFS_DW/*.sqlproj
+
+## Archive for UFS_DW
+        - task: ArchiveFiles@2
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/Database/UFS_DW/bin/Debug/UFS_DW.dacpac'
+            includeRootFolder: true
+            archiveType: 'zip'
+            archiveFile: '$(System.DefaultWorkingDirectory)/DW.zip'
+            replaceExistingArchive: true
+               
+## DW Publish              
+        - publish: $(System.DefaultWorkingDirectory)/DW.zip
+          displayName: 'Publish dacpac'
+          artifact: 'UFS_DW'
+       
+## Deploy DW
+        - task: SqlAzureDacpacDeployment@1
+          displayName: 'Azure SQL DW Dacpac Task'
+          inputs:
+            azureSubscription: ACS_Food_Solution_Dev_SPN
+            ServerName: 'bnlwe-fr01-p-56626-pa01-sql-prd-01.database.windows.net'
+            DatabaseName: 'bnlwe-fr01-p-56626-pa01-sqldb-prd-02'
+            SqlUsername: $(PRDSSISUSERNAME)
+            SqlPassword: $(PRDSSISPASSWORD)
+            DacpacFile: $(System.DefaultWorkingDirectory)/Database/UFS_DW/bin/Debug/UFS_DW.dacpac
+
+#################
+- stage: Archive
+  dependsOn: Build
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'Download Artifact'
+      pool: 
+       vmImage: 'ubuntu-latest'
+      steps:
+       - download: current
+         artifact: UFS_DW
+
+       - template: ../../preliminary-steps.yml
+         parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'SQLDWPRD'
+            
+ # ## TAG Resources               
+       - task: AzureCLI@2
+         displayName: 'Tagging SQL DB on Azure Cloud'
+         continueOnError: false
+         inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            scriptLocation: 'inlineScript'
+            scriptType: 'bash'
+            inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(prdresgroup)/providers/Microsoft.Sql/servers/$(prdsqlserver)/databases/$(dbname) \
+              --tags version=$(newVersion)
+
+## Applying TAG to a repo
+       - task: CmdLine@2
+         displayName: 'TAG REPO'
+         env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+         inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

@@ -1,0 +1,73 @@
+parameters:
+  - name: dstBranchRef
+    type: string
+  - name: environment
+    type: string
+  - name: tagnumberRef
+    type: string
+
+steps:
+  - ${{ if eq(parameters.environment, 'QA') }}:
+    - task: CmdLine@2
+      continueOnError: false
+      displayName: "Creating release branch: ${{parameters.dstBranchRef}}"
+      inputs:
+        script: |
+          set -euoxv pipefail
+          git remote set-url origin https://$(CICD_PAT)@$(repo)
+          #if [ $(Build.SourceBranch) == "refs/heads/develop" ]; then
+          echo "Creating Release Branch"
+          git checkout ${{parameters.tagnumberRef}}
+          git checkout -b ${{parameters.dstBranchRef}}
+          git push origin ${{parameters.dstBranchRef}}
+          #else
+            #echo "Merging to release/{currVer} Branch"
+            #git checkout release/{currVer}
+            #git merge $(Build.SourceBranchName)}
+            #git push origin release/{currVer}
+          #fi
+          
+  - ${{ if eq(parameters.environment, 'PROD') }}:
+
+    - task: AzureKeyVault@1
+      displayName: 'Azure Dev KeyVault'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        KeyVaultName: 'iactpm-payment-kv-prod'
+        
+    - task: CmdLine@2
+      continueOnError: false
+      displayName: "Update ${{parameters.dstBranchRef}} branch "
+      inputs:
+        script: |
+          set -euoxv pipefail
+          rm -rf $(Build.SourcesDirectory)/merge_code
+          mkdir -p $(Build.SourcesDirectory)/merge_code
+          cd $(Build.SourcesDirectory)/merge_code
+          git clone https://$(GITHUB-PAT)@$(repo)
+          cd tim-actpm-integration-OI-discount
+          git remote set-url origin https://$(GITHUB-PAT)@$(repo)
+          git config --global user.email "iactpmpymtcicd.im@pg.com"
+          git config --global user.name "iactpmpymtcicd"
+          echo "Squash Merge ${{parameters.tagnumberRef}} to ${{parameters.dstBranchRef}}"
+          git fetch --tags origin
+          git merge --squash ${{parameters.tagnumberRef}}
+          git commit -m "Squash Merge of ${{parameters.tagnumberRef}}"
+          git push origin ${{parameters.dstBranchRef}}
+          
+
+          
+  # - task: CmdLine@2
+    # continueOnError: false
+    # displayName: "Merge ${{parameters.srcBranchRef}} over ${{parameters.dstBranchRef}} branch"
+    # inputs:
+      # script: |
+        # set -euoxv pipefail
+        # git remote set-url origin https://$(CICD_PAT)@$(repo)
+        # commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+        # commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+        # git config user.email "$commitAuthorEmail"
+        # git config user.name "$commitAuthorName"
+        # git checkout -t ${{parameters.dstBranchRef}}
+        # git merge origin/${{parameters.srcBranchRef}}
+        # git push origin ${{parameters.dstBranchRef}}

@@ -1,0 +1,151 @@
+currentRelease: 1
+package-prefix: 'Food-Solution'
+pattern-version: '\.[[:digit:]]{1,}\.[[:digit:]]{1,}'
+git-repo: 'dev.azure.com/unileverfrontier/ACS%20(Food%20Solutions)/_git/ACS-Food_Solutions'
+AZ_ORG_NAME: 'https://dev.azure.com/unileverfrontier'
+AZ_PRJ_NAME: 'b0c5322a-4e52-495b-b7a9-09d131290579'
+tennantId: 'f66fae02-5d36-495b-bfe0-78a6ff9f8e6e'
+feed: 'FoodSolution'
+resourceGroup: 'bnlwe-fr01-n-56690-PA01-rg'
+prdresourceGroup: 'bnlwe-fr01-p-56626-PA01-rg'
+azureSubscription: 'f0495c41-db5e-43a4-8465-35ae4997db87'
+devservername: 'bnlwe-fr01-d-56690-pa01-sql-dev-01.database.windows.net'
+qaservername: 'bnlwe-fr01-n-56690-pa01-sql-lqa-01.database.windows.net'
+prdservername: 'bnlwe-fr01-p-56626-pa01-sql-prd-01.database.windows.net'
+devsqlserver:  'bnlwe-fr01-d-56690-pa01-sql-dev-01'
+qasqlserver: 'bnlwe-fr01-n-56690-pa01-sql-lqa-01'
+prdsqlserver: 'bnlwe-fr01-p-56626-pa01-sql-prd-01'
+
+############# SQL  #############
+
+SQLDMDEV:
+  arfname: 'fs-dm'
+  dbname: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-01'
+
+SQLDMQA:
+  arfname: 'fs-dm-qa'
+  dbname: 'bnlwe-fr01-n-56690-pa01-sqldb-lqa-01'
+
+SQLDMPRD: 
+  arfname: 'fs-dm-prd'
+  dbname: 'bnlwe-fr01-p-56626-pa01-sqldb-prd-01'
+  
+SQLDWDEV:
+  arfname: 'fs-dw'
+  dbname: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-02'
+
+SQLDWQA:
+  arfname: 'fs-dw-qa'
+  dbname: 'bnlwe-fr01-n-56690-pa01-sqldb-lqa-02'
+
+SQLDWPRD: 
+  arfname: 'fs-dw-prd'
+  dbname: 'bnlwe-fr01-p-56626-pa01-sqldb-prd-02'
+
+SQLSTGDEV:
+  arfname: 'fs-stg'
+  dbname: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-03'
+  
+SQLSTGQA:
+  arfname: 'fs-stg-qa'
+  dbname: 'bnlwe-fr01-n-56690-pa01-sqldb-lqa-03'
+
+SQLSTGPRD:
+  arfname: 'fs-stg-prd'
+  dbname: 'bnlwe-fr01-p-56626-pa01-sqldb-prd-03'
+  
+SQLLOGDEV:
+  arfname: 'fs-log'
+  dbname: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-04'
+
+SQLLOGQA: 
+  arfname: 'fs-log-qa'
+  dbname: 'bnlwe-fr01-n-56690-pa01-sqldb-lqa-04'
+
+SQLLOGPRD:
+  arfname: 'fs-log-prd'
+  dbname: 'bnlwe-fr01-p-56626-pa01-sqldb-prd-04'
+  
+############# WebService  #############
+WEBDEV: 
+  website: 'bnlwefr01d56690pa01-unlintrncom-webapp'
+  arfname: 'fs-web'
+
+WEBQA: 
+  website: 'bnlwefr01n56690pa01-unlintrncom-webapp'
+  arfname: 'fs-web-qa'
+  
+WEBPRD: 
+  website: 'bnlwefr01p56626pa01-unlintrncom-webapp'
+  arfname: 'fs-web-prd'
+############# Datafactory  #############
+ADFDEV: 
+  DataFactoryName: 'bnlwe-fr01-d-56690-pa01-adf-01'
+  dataFactory_location: 'West Europe'
+  arfname: 'fs-adf'
+
+ADFQA: 
+  DataFactoryName: 'bnlwe-fr01-n-56690-pa01-adf-01'
+  dataFactory_location: 'West Europe'
+  arfname: 'fs-adf-qa'
+
+ADFPRD: 
+  DataFactoryName: 'bnlwe-fr01-p-56626-pa01-adf-01'
+  dataFactory_location: 'West Europe'
+  arfname: 'fs-adf-prd'
+
+############# SSIS  #############
+SSISDEV:
+  ssisserver: 'bnlwe-fr01-d-56690-pa01-sql-dev-01'
+  ssisdb: 'SSISDB'
+  keyvault: 'bnlwe-fr01-n-56690-kv-02'
+  arfname: 'fs-ssis'
+
+SSISQA:
+  ssisserver: 'bnlwe-fr01-n-56690-pa01-sql-lqa-01'
+  ssisdb: 'SSISDB'
+  keyvault: 'bnlwe-fr01-n-56690-kv-02'
+  arfname: 'fs-ssis-qa'
+
+SSISPRD:
+  ssisserver: 'bnlwe-fr01-p-56626-pa01-sql-prd-01'
+  ssisdb: 'SSISDB'
+  arfname: 'fs-ssis-prd'
+  
+############# SSAS  #############
+SSASDEV:
+  ssasserver: 'bnlwefr01d56690pa01aasdev01'
+  arfname: 'fs-ssas'
+  dbname: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-01'
+  ssassqlserver: 'bnlwe-fr01-d-56690-pa01-sql-dev-01.database.windows.net'
+
+SSASQA: 
+  ssasserver: 'bnlwefr01n56690pa01aaslqa01'
+  arfname: 'fs-ssas-qa'
+  dbname: 'bnlwe-fr01-n-56690-pa01-aasdb-lqa-01'
+  ssassqlserver: 'bnlwe-fr01-n-56690-pa01-sql-lqa-01.database.windows.net'
+
+SSASPRD: 
+  ssasserver: 'bnlwefr01p56626pa01aasprd01'
+  arfname: 'fs-ssas-prd'
+  dbname: 'bnlwe-fr01-p-56626-pa01-aasdb-prd-01'
+  ssassqlserver: 'bnlwe-fr01-p-56626-pa01-sql-prd-01.database.windows.net'
+############# LogicApps  #############
+LA_GLO_Dev_Cn_01: 
+  arfname: 'fs-la01'
+LA_GLO_QA_Cn_01: 
+  arfname: 'fs-la01-qa'
+LA_GLO_PRD_Cn_01:
+  arfname: 'fs-la01-prd'
+LA_GLO_Dev_Cn_02:
+  arfname: 'fs-la02'
+LA_GLO_QA_Cn_02:
+  arfname: 'fs-la02-qa'
+LA_GLO_PRD_Cn_02:
+  arfname: 'fs-la02-prd'
+LA_GLO_Dev_Cn_03:
+  arfname: 'fs-la03'
+LA_GLO_QA_Cn_03:
+  arfname: 'fs-la03-qa'
+LA_GLO_PRD_Cn_03:
+  arfname: 'fs-la03-prd'

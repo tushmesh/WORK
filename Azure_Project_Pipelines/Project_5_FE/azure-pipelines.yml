@@ -1,0 +1,179 @@
+
+trigger:
+  branches:
+    include:
+      - feature/pre-develop
+      - develop
+      - release
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: FrontEnd
+
+
+stages:
+##########################################
+########## pre-develop Branch Build ##########
+##########################################
+- stage: 'PreDev'
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/feature/pre-develop')
+  displayName: Build and push for PRE-DEV
+  jobs:
+  - job: Build
+    displayName: Build PRE-DEV
+    steps:
+
+## Build an Image
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        containerRegistry: 'CPG-Container-app'
+        repository: '$(imageRepository)'
+        command: 'buildAndPush'
+        Dockerfile: 'Dockerfile'
+        tags: pre-$(Build.BuildId)
+        buildContext: $(Build.SourcesDirectory)
+
+## Deploy Image to WebApp 
+
+    - task: AzureWebAppContainer@1
+      displayName: 'Azure App Service Deploy: $(azureWebAppdev)'
+      inputs:
+        azureSubscription: '$(azureSubscriptiondev)'
+        appName: '$(azureWebAppdev)'
+        slotName: '$(azureWebApppredev)'
+        containers: '$(containerRegistry)/$(imageRepository):pre-$(Build.BuildId)'
+
+##########################################
+########## develop Branch Build ##########
+##########################################
+- stage: 'Dev'
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/develop')
+  displayName: Build and push for DEV
+  jobs:
+  - job: Build
+    displayName: Build DEV
+    steps:
+
+## Build an Image
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        containerRegistry: 'CPG-Container-app'
+        repository: '$(imageRepository)'
+        command: 'buildAndPush'
+        Dockerfile: 'Dockerfile'
+        tags: dev-$(Build.BuildId)
+        buildContext: $(Build.SourcesDirectory)
+
+## Deploy Image to WebApp 
+
+    - task: AzureWebAppContainer@1
+      displayName: 'Azure App Service Deploy: $(azureWebAppdev)'
+      inputs:
+        azureSubscription: '$(azureSubscriptiondev)'
+        appName: '$(azureWebAppdev)'
+        containers: '$(containerRegistry)/$(imageRepository):dev-$(Build.BuildId)'
+
+##########################################
+########## release Branch Build ##########
+##########################################
+- stage: 'Release'
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/release')
+  displayName: Build and push for RELEASE
+  jobs:
+  - deployment: Approval
+    displayName: 'Awaiting for Approval'
+    environment: RELEASE
+  - job: Build
+    displayName: Build RELEASE
+    steps:
+
+## Build an Image
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        containerRegistry: 'CPG-Container-app'
+        repository: '$(imageRepository)'
+        command: 'buildAndPush'
+        Dockerfile: 'Dockerfile'
+        tags: release-$(Build.BuildId)
+        buildContext: $(Build.SourcesDirectory)
+
+## Deploy Image to WebApp 
+
+    - task: AzureWebAppContainer@1
+      displayName: 'Azure App Service Deploy: $(azureWebApprelease)'
+      inputs:
+        azureSubscription: '$(azureSubscriptiondev)'
+        appName: '$(azureWebApprelease)'
+        containers: '$(containerRegistry)/$(imageRepository):release-$(Build.BuildId)'
+
+#### Tag Repository
+    - task: CmdLine@2
+      continueOnError: false
+      env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      displayName: "Tag Repository"
+      inputs:
+          script: |
+            commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+            commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+            git config user.email "$commitAuthorEmail"
+            git config user.name "$commitAuthorName"
+            git config http.extraheader "AUTHORIZATION: bearer $(System.AccessToken)"
+            git tag "release-$(Build.BuildId)"
+            git push origin  "release-$(Build.BuildId)"
+
+##########################################
+########## main Branch Build ##########
+##########################################
+- stage: 'Prod'
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  displayName: Build and push for PROD
+  jobs:
+  - deployment: Approval
+    displayName: 'Awaiting for Approval'
+    environment: PROD
+  - job: Build
+    displayName: Build PROD
+    steps:
+
+## Build an Image
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        containerRegistry: 'CPG-Container-app'    ########## Change the containerRegistry when available ##########
+        repository: '$(imageRepository)'      ########## Change the imageRepository when available ##########
+        command: 'buildAndPush'
+        Dockerfile: 'Dockerfile'
+        tags: prod-$(Build.BuildId)
+        buildContext: $(Build.SourcesDirectory)
+
+## Deploy Image to WebApp 
+
+    - task: AzureWebAppContainer@1
+      displayName: 'Azure App Service Deploy: $(azureWebApprelease)'
+      inputs:
+        azureSubscription: '$(azureSubscriptiondev)'          ########## Change the Subscription when available ##########
+        appName: '$(azureWebAppprod)'                          ########## Update AppName in Frontend Library  when available ##########
+        containers: '$(containerRegistry)/$(imageRepository):prod-$(Build.BuildId)'   ########## Change the containerRegistry when available ##########
+
+#### Tag Repository
+    - task: CmdLine@2
+      continueOnError: false
+      env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      displayName: "Tag Repository"
+      inputs:
+          script: |
+            commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+            commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+            git config user.email "$commitAuthorEmail"
+            git config user.name "$commitAuthorName"
+            git config http.extraheader "AUTHORIZATION: bearer $(System.AccessToken)"
+            git tag "prod-$(Build.BuildId)"
+            git push origin  "prod-$(Build.BuildId)"

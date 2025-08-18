@@ -1,0 +1,96 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+   include:
+    
+     - master
+     - SQA
+     - develop
+     - PPD
+     
+  paths:
+    include:
+      - Components/BlobStorageExternal
+variables:
+ - group: CICD_VARIABLES
+ 
+pool:
+  vmImage: windows-latest
+
+# fucntion App
+stages:
+  - stage: 'BlobStorageExternalFA'
+    displayName: 'FunctionApp BlobStorageExternal deployment'
+    jobs:
+      - job: 'BlobStorageExternal'
+        displayName: 'BlobStorageExternal'
+        steps:
+        # - task: NuGetToolInstaller@1
+        # - task: NuGetCommand@2
+        #   inputs:
+        #     restoreSolution: $(System.DefaultWorkingDirectory)/Components/BlobStorageExternal/BlobStorageExternal/BlobStorageExternal.sln
+
+        - task: DotNetCoreCLI@2
+          inputs:
+            command: publish
+            arguments: '--configuration Release --output publish_output'
+            projects: '$(System.DefaultWorkingDirectory)/Components/BlobStorageExternal/BlobStorageExternal/*.csproj'
+            publishWebProjects: false
+            modifyOutputPath: false
+            zipAfterPublish: true
+
+        - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            
+            - task: AzureCLI@2
+              displayName: 'Azure FunctionApp deploy on dev '
+              inputs:
+                azureSubscription: SPN_LogicApp
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az functionapp deployment source config-zip --resource-group '$(devresgroup)' --name '$(devfunapp)' --src '$(System.DefaultWorkingDirectory)/publish_output/publish_output.zip'
+      # SQA
+        - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            
+            - task: AzureCLI@2
+              displayName: 'Azure FunctionApp deploy on SQA '
+              inputs:
+                azureSubscription: SPN_LogicApp
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az functionapp deployment source config-zip --resource-group '$(qaresgroup)' --name '$(qafunapp)' --src '$(System.DefaultWorkingDirectory)/publish_output/publish_output.zip'
+
+        - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            
+            - task: AzureCLI@2
+              displayName: 'Azure FunctionApp deploy on PPD'
+              inputs:
+                azureSubscription: SPN_LogicApp
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az functionapp deployment source config-zip --resource-group '$(ppdresgroup)' --name '$(ppdfunapp)' --src '$(System.DefaultWorkingDirectory)/publish_output/publish_output.zip'
+        
+        - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: AzureCLI@2
+              displayName: 'Azure FunctionApp PRD deploy'
+              inputs:
+                azureSubscription: SPN_LogicApp
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az functionapp deployment source config-zip --resource-group '$(prdresgroup)' --name '$(prdfunapp)' --src '$(System.DefaultWorkingDirectory)/publish_output/publish_output.zip'
+
+            - task: AzureCLI@2
+              displayName: 'Azure FunctionApp DR deploy'
+              inputs:
+                azureSubscription: SPN_LogicApp
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az functionapp deployment source config-zip --resource-group '$(drresgroup)' --name '$(drfunapp)' --src '$(System.DefaultWorkingDirectory)/publish_output/publish_output.zip'

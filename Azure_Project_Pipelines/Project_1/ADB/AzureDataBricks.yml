@@ -1,0 +1,251 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+    - develop
+    - QA
+    - master
+    - hotfix/*
+  paths:
+    include:
+    - ADB/*
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: CICD_VARIABLES
+
+resources:
+  repositories:
+    - repository: ReleaseAdmin
+      type: git
+      name: 'Principal Administration/Release-Administration'
+stages:
+- stage: CI
+  displayName: "Databricks NoteBook validation"
+  jobs:
+    - job: "CI"
+      workspace:
+        clean: all
+      steps:
+
+        - checkout: ReleaseAdmin
+          path: s/ReleaseAdmin
+          clean: false
+          
+        - checkout: Self
+          clean: false
+          path: s/SubjectArea
+        - task: PowerShell@2
+          displayName: 'Checkout feature branch'
+          inputs:
+              targetType: 'inline'
+              script: |
+                cd $(System.DefaultWorkingDirectory)/ReleaseAdmin
+                git checkout feature/task-group-template
+                cd ..
+
+        - script: |
+           python -m pip install black
+           black $(System.DefaultWorkingDirectory)/SubjectArea/ADB --force-exclude ADB/MetaDataIngestionFramework/DataValidation/NB_01_RowCount.py
+          displayName: 'Run Black - Code Formatter'
+
+
+## Dev Deployment $($env:environment)
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+  - stage: CD
+    displayName: 'ADB Deployment for DEV'
+    dependsOn: CI
+    jobs:
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for DEV'
+      environment: DEV
+      strategy:
+       runOnce:
+         deploy:
+           steps:
+
+            - checkout: ReleaseAdmin
+              path: s/ReleaseAdmin
+              clean: false
+              
+            - checkout: Self
+              clean: false
+              path: s/SubjectArea
+# Load Variables
+            - task: PowerShell@2
+              displayName: Load Variables from JSON configuration - Subject Area
+              inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                targetType: filePath
+            - task: PowerShell@2
+              displayName: Load Variables from JSON configuration - Global
+              inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                targetType: filePath
+            
+            - task: AzurePowerShell@5
+              displayName: 'Get Token'
+              inputs:
+                azureSubscription: $(devservicename)
+                ScriptType: 'InlineScript'
+                Inline: |
+                  $token = (Get-AzKeyVaultSecret -VaultName keyvault-msfnex20-cx-dev -Name "$(json.DatabricksClusterSecretNameDEV)" -AsPlainText)
+                  write-Host "##vso[task.setvariable variable=adb_token;]$token"
+                azurePowerShellVersion: 'LatestVersion'
+
+            - task: configuredatabricks@0
+              displayName: "Configuring Databricks workspace"
+              continueOnError: false
+              inputs:
+                    url: '$(json.ADBUrl)'
+                    token: '$(adb_token)'
+            - task: databricksDeployScripts@0
+              displayName: 'Databricks Notebooks deployment'
+              inputs:
+                  bearerToken: '$(adb_token)'
+                  localPath: '$(System.DefaultWorkingDirectory)/SubjectArea/ADB/'
+                  databricksPath: $(adb_Path)
+                  clean: true
+
+## QA Deployment
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/QA' )}}:
+  - stage: CD
+    displayName: 'ADB Deployment for QA'
+    dependsOn: CI
+    jobs:
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for QA'
+      environment: QA
+      strategy:
+       runOnce:
+         deploy:
+           steps:
+
+             - checkout: ReleaseAdmin
+               path: s/ReleaseAdmin
+               clean: false
+              
+             - checkout: Self
+               clean: false
+               path: s/SubjectArea
+# Load Variables
+             - task: PowerShell@2
+               name: SLV
+               displayName: Load Variables from JSON configuration - Subject Area
+               inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                targetType: filePath
+             - task: PowerShell@2
+               name: CLV
+               displayName: Load Variables from JSON configuration - Global
+               inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                targetType: filePath
+            
+             - task: AzurePowerShell@5
+               displayName: 'Get Token'
+               inputs:
+                azureSubscription: $(qaservicename)
+                ScriptType: 'InlineScript'
+                Inline: |
+                  $token = (Get-AzKeyVaultSecret -VaultName "$(json.KeyVaultPrefix)-$(json.ResourcePrefixQA)-$(json.ResourceSuffixQA)" -Name "$(json.DatabricksClusterSecretNameQA)" -AsPlainText)
+                  write-Host "##vso[task.setvariable variable=adb_token;]$token"
+                azurePowerShellVersion: 'LatestVersion'
+
+             - task: configuredatabricks@0
+               displayName: "Configuring Databricks workspace"
+               continueOnError: false
+               inputs:
+                    url: '$(json.ADBUrl)'
+                    token: '$(adb_token)'
+             - task: databricksDeployScripts@0
+               displayName: 'Databricks Notebooks deployment'
+               inputs:
+                  bearerToken: '$(adb_token)'
+                  localPath: '$(System.DefaultWorkingDirectory)/SubjectArea/ADB/'
+                  databricksPath: $(adb_Path)
+                  clean: true
+
+## PROD Deployment 
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+  - stage: CD
+    displayName: 'ADB Deployment for PROD'
+    dependsOn: CI
+    jobs:
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for PROD'
+      environment: PROD
+      strategy:
+       runOnce:
+         deploy:
+           steps:
+
+             - checkout: ReleaseAdmin
+               path: s/ReleaseAdmin
+               clean: false
+                
+             - checkout: Self
+               clean: false
+               path: s/SubjectArea
+
+# Load Variables
+             - task: PowerShell@2
+               name: SLV
+               displayName: Load Variables from JSON configuration - Subject Area
+               inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                targetType: filePath
+             - task: PowerShell@2
+               name: CLV
+               displayName: Load Variables from JSON configuration - Global
+               inputs:
+                filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                targetType: filePath
+            
+             - task: AzurePowerShell@5
+               displayName: 'Get Token'
+               inputs:
+                azureSubscription: $(prodservicename)
+                ScriptType: 'InlineScript'
+                Inline: |
+                  $token = (Get-AzKeyVaultSecret -VaultName "$(json.KeyVaultPrefix)-$(json.ResourcePrefixPROD)-prd" -Name "$(json.DatabricksClusterSecretNamePROD)" -AsPlainText)
+                  write-Host "##vso[task.setvariable variable=adb_token;]$token"
+                azurePowerShellVersion: 'LatestVersion'
+
+             - task: configuredatabricks@0
+               displayName: "Configuring Databricks workspace"
+               continueOnError: false
+               inputs:
+                    url: '$(json.ADBUrl)'
+                    token: '$(adb_token)'
+             - task: databricksDeployScripts@0
+               displayName: 'Databricks Notebooks deployment'
+               inputs:
+                  bearerToken: '$(adb_token)'
+                  localPath: '$(System.DefaultWorkingDirectory)/SubjectArea/ADB/'
+                  databricksPath: $(adb_Path)
+                  clean: true
+
+             - task: PowerShell@2
+               displayName: 'Tag Repo'
+               inputs:
+                 targetType: inline
+                 script: |
+                    cd $(System.DefaultWorkingDirectory)/SubjectArea
+                    $commitAuthorName=$(git log --format='%an' $(Build.SourceVersion))
+                    $commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion))
+                    git config user.email "$commitAuthorEmail"
+                    git config user.name "$commitAuthorName"
+                    $date=$(Get-Date -Format yyyy-MM-dd_HH.mm);
+                    git remote set-url origin https://$(PATTOKEN)@$(GITURL)
+                    git tag -a ADB_$date -m "ADB Prod deployment on $date"
+                    git push origin --tags

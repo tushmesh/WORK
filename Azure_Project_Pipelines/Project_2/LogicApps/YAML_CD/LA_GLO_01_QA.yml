@@ -1,0 +1,101 @@
+# DevOps CI/CD Pipeline for LogicApps
+
+variables:
+ - group: CICD_VARIABLES
+ 
+trigger:
+  branches:
+    include:
+    - QA
+  paths:
+    include:
+    - LogicApps/UFS_GLO_Cn_01/*
+
+stages:
+- stage: Dev
+  displayName: Development
+  jobs:
+   - job: Build
+     displayName: LogicApps
+     timeoutInMinutes: 20
+     pool:
+       vmImage: 'ubuntu-latest'
+
+     steps:
+
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+            
+        - template: ../../preliminary-steps.yml
+          parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'LA_GLO_QA_Cn_01'
+## Replace the Values
+        - task: PowerShell@2
+          inputs:
+            targetType: filePath
+            filePath: '$(System.DefaultWorkingDirectory)/Deployment/YAML/LogicApps/YAML_CD/replace_qa.ps1'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/Deployment/YAML/LogicApps/YAML_CD'
+
+## Archive UFS_GLO_Cn_01
+        - task: ArchiveFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_01'
+            archiveType: zip
+            archiveFile: '$(System.DefaultWorkingDirectory)/package/UFS_GLO_Cn_01.zip'
+            replaceExistingArchive: true
+
+## UFS_GLO_Cn_01 Publish              
+        - publish: $(System.DefaultWorkingDirectory)/package/UFS_GLO_Cn_01.zip
+          displayName: 'Publish '
+          artifact: 'UFS_GLO_Cn_01'
+
+## Deploy LogicApps UFS_GLO_Cn_01
+
+        - task: AzureResourceManagerTemplateDeployment@3
+          displayName: 'ARM Template deployment: UFS_GLO_Cn_01'
+          inputs:
+            azureResourceManagerConnection: ACS_Food_Solution_Dev_SPN
+            subscriptionId: '$(azureSubscription)'
+            resourceGroupName: '$(resgroup)'
+            location: 'West Europe'
+            csmFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_01/template.json'
+            action: 'Create Or Update Resource Group'
+            templateLocation: 'Linked artifact'
+            deploymentMode: 'Incremental'
+
+## TAG RESOURCES
+        - task: AzureCLI@2
+          displayName: 'Tagging LogicApps on Azure Cloud for UFS_GLO_QA_Cn_01'
+          continueOnError: false
+          inputs:
+              azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+              scriptLocation: 'inlineScript'
+              scriptType: 'bash'
+              inlineScript: |
+                  set -euovx pipefail
+                  echo -e "\e[1mWriting resource tag on Azure\e[0m"
+                  az tag create \
+                  --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_QA_Cn_01 \
+                  --tags version=$(newVersion)
+
+## Applying TAG to a repo
+        - task: CmdLine@2
+          displayName: 'TAG REPO'
+          env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

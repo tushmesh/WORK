@@ -1,0 +1,123 @@
+parameters:
+  - name: packagePath
+    type: string
+  - name: version
+    type: string
+  - name: env
+    type: string
+steps:
+
+# Dev FunctionApp Deployment
+  - ${{ if eq(parameters.env, 'Dev') }}:
+
+
+    #- task: AzureKeyVault@1
+      #displayName: 'Azure Dev KeyVault'
+      #inputs:
+        #azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        #KeyVaultName: 'iactpm-payment-kv-dev'
+
+        
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Azure CLI to deploy FunctionApp' 
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mDeploying FunctionApp\e[0m"
+            zipinfo -tl ${{parameters.packagePath}}
+            az functionapp config appsettings set --name '$(site)' --resource-group '$(resgroup)' --settings  "WEBSITE_RUN_FROM_PACKAGE=1" "databricksJobId=1" "databricksServiceDomain=adb-926521450574514.14.azuredatabricks.net" "databricksToken=@Microsoft.KeyVault(SecretUri=https://iactpm-payment-kv-dev.vault.azure.net/secrets/databricksToken)" 
+            az functionapp deployment source config-zip --resource-group '$(resgroup)' --name '$(site)' --src '${{parameters.packagePath}}'
+
+# QA FunctionApp Deployment
+  - ${{ if eq(parameters.env, 'QA') }}:
+    #- task: AzureKeyVault@1
+      #displayName: 'Azure QA KeyVault'
+      #inputs:
+        #azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        #KeyVaultName: 'iactpm-payment-kv-qa'
+        
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Azure CLI to deploy FunctionApp' 
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mDeploying FunctionApp\e[0m"
+            zipinfo -tl ${{parameters.packagePath}}
+            az functionapp config appsettings set --name '$(site)' --resource-group '$(resgroup)' --settings "databricksJobId=99" "databricksServiceDomain=adb-4211873999330931.11.azuredatabricks.net" "databricksToken=@Microsoft.KeyVault(SecretUri=https://iactpm-payment-kv-qa.vault.azure.net/secrets/databricksToken)"  "WEBSITE_RUN_FROM_PACKAGE=1"
+            az functionapp deployment source config-zip --resource-group '$(resgroup)' --name '$(site)' --src '${{parameters.packagePath}}'
+
+# PROD FunctionApp Deployment
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    #- task: AzureKeyVault@1
+      #displayName: 'Azure PROD KeyVault'
+      #inputs:
+        #azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        #KeyVaultName: 'iactpm-payment-kv-prod'
+        
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Azure CLI to deploy FunctionApp' 
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mDeploying FunctionApp\e[0m"
+            zipinfo -tl ${{parameters.packagePath}}
+            az functionapp config appsettings set --name '$(site)' --resource-group '$(resgroup)' --settings "databricksJobId=6" "databricksServiceDomain=adb-1595308126970883.3.azuredatabricks.net" "databricksToken=@Microsoft.KeyVault(SecretUri=https://iactpm-payment-kv-prod.vault.azure.net/secrets/databricksToken)"  "WEBSITE_RUN_FROM_PACKAGE=1"
+            az functionapp deployment source config-zip --resource-group '$(resgroup)' --name '$(site)' --src '${{parameters.packagePath}}'
+
+## Tagging
+  - ${{ if eq(parameters.env, 'Dev') }}:
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Tagging Function App on Azure Cloud'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(site) \
+              --tags version=${{parameters.version}}
+
+  - ${{ if eq(parameters.env, 'QA') }}:
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Tagging Function App on Azure Cloud'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(site) \
+              --tags version=${{parameters.version}}
+
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: AzureCLI@2
+      continueOnError: false
+      displayName: 'Tagging Function App on Azure Cloud'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+              --resource-id /subscriptions/$(azureSubscriptionprd)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(site) \
+              --tags version=${{parameters.version}}

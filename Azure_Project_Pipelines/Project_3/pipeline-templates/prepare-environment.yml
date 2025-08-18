@@ -1,0 +1,40 @@
+steps:
+  - task: CmdLine@2
+    displayName: "Prepare Environment"
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mEnsuring unix-like source files termination\e[0m"
+        find scripts -type f -exec chmod +x {} \;
+        find $(Build.SourcesDirectory)/sources/tim-actpm-integration-OI-discount -type f -print0 | xargs -0 dos2unix
+        echo -e "\e[1mInitializing python virtual environment\e[0m"
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+        python -m pip install -r scripts/python/requirements.txt
+        echo -e "\e[1mReading informations from info.yaml\e[0m"
+        microservice=$(scripts/python/shyaml get-value "microservice" < "info.yaml")
+        currentRelease=$(scripts/python/shyaml get-value "currentRelease" < "info.yaml")
+        patternVersion=$(scripts/python/shyaml get-value "pattern-version" < "info.yaml")
+        packagePrefix=$(scripts/python/shyaml get-value "package-prefix" < "info.yaml")
+        feed=$(scripts/python/shyaml get-value "feed" < "info.yaml")
+        repo=$(scripts/python/shyaml get-value "git-repo" < "info.yaml")
+        databricksWspUrl=$(scripts/python/shyaml get-value "databricks-wsp-url" < "info.yaml")
+        echo "##vso[task.setvariable variable=microservice]${microservice}"
+        echo "##vso[task.setvariable variable=currentRelease]${currentRelease}"
+        echo "##vso[task.setvariable variable=patternVersion]${patternVersion}"
+        echo "##vso[task.setvariable variable=packagePrefix]${packagePrefix}"
+        echo "##vso[task.setvariable variable=feed]${feed}"
+        echo "##vso[task.setvariable variable=repo]${repo}"
+        echo "##vso[task.setvariable variable=databricksWspUrl]${databricksWspUrl}"
+        deactivate
+
+  - template: new-version.yml
+
+  - task: CmdLine@2
+    displayName: "Export new version number"
+    inputs:
+      script: |
+        set -euo pipefail
+        new_version=$(cat .new_version)
+        echo "##vso[task.setvariable variable=newVersion]${new_version}"

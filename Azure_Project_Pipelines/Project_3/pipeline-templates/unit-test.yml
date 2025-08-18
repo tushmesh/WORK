@@ -1,0 +1,76 @@
+parameters:
+  - name: app
+    type: string
+steps:
+
+  - task: AzureKeyVault@1
+    displayName: 'Azure Dev KeyVault'
+    inputs:
+      azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+      KeyVaultName: 'iactpm-payment-kv-dev'
+      SecretsFilter: 'PAT-DATABRICKS'
+        
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: "Unit Test/Databricks"
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mInitializing python virtual environment\e[0m"
+        mv $(Build.SourcesDirectory)/sources/$(microservice)/${{ parameters.app }}/Functions/variables.py $(Build.SourcesDirectory)/
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+        python -m pip install unittest-xml-reporting
+        if [[ -f $(Build.SourcesDirectory)/sources/$(microservice)/${{ parameters.app }}/requirements.txt ]]; then
+          python -m pip install -r $(Build.SourcesDirectory)/sources/$(microservice)/${{ parameters.app }}/UnitTest/requirements.txt
+        fi
+        echo -e "\e[1mExecuting Unit Test tool\e[0m"
+        python -m xmlrunner discover -v -s "$(Build.SourcesDirectory)/sources/$(microservice)/${{ parameters.app }}/UnitTest" -p "test_*.py" --output-file "$(Build.SourcesDirectory)/results.xml" > "$(Build.SourcesDirectory)/output.txt"
+        python -m pip install -r scripts/python/requirements.txt
+        echo -e "\e[1mAnalyzing unit test results\e[0m"
+        python scripts/python/parseUTResults.py -fp "$(Build.SourcesDirectory)/results.xml"
+        deactivate
+        if grep -w "ERROR" $(Build.SourcesDirectory)/output.txt ; then
+            echo "Unit Tests are having Errors"
+            exit 1
+        fi
+
+  # - task: CmdLine@2
+    # continueOnError: false
+    # displayName: "Check Errors from consoles"
+    # inputs:
+      # script: |
+        # if grep -w "ERROR" $(Build.SourcesDirectory)/results.xml ; then
+            # echo "Unit Tests are having Errors"
+            # exit 1
+        # fi
+
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: "Code Coverage"
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mInitializing python virtual environment\e[0m"
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+        python -m pip install coverage
+        python -m pip install pytest
+        echo -e "\e[1mExecuting Code Coverage\e[0m"
+        coverage run -m pytest "$(Build.SourcesDirectory)/sources/$(microservice)/${{ parameters.app }}"
+        coverage report --omit .localPy3Env/lib/*.py
+        coverage xml
+        ls -la
+        deactivate
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: $(Build.SourcesDirectory)/results.xml
+      failTaskOnFailedTests: true
+      publishRunAttachments: true
+      
+  - task: PublishCodeCoverageResults@1
+    inputs:
+      summaryFileLocation: $(Build.SourcesDirectory)/coverage.xml

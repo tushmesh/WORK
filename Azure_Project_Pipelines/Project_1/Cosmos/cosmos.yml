@@ -1,0 +1,56 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+ branches:
+   include:
+     - develop
+     - QA
+     - master
+ paths:
+  include:
+    - Cosmosdb/*
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: 'UploadJson'
+    displayName: 'Upload Json to Cosmos DB'
+    jobs:
+      - job: 'Upload'
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/feature/test_cosmos' )}}:
+            - task: AzureCLI@2
+              displayName: 'Upload Json files'
+              continueOnError: false
+              inputs:
+                azureSubscription: 'MSFAZX20 Data Lake DEV-CentralNode-GLB'
+                scriptType: bash
+                scriptPath: '$(System.DefaultWorkingDirectory)/DevOps/ProjectPipelines/Cosmos/uploadjson.sh'
+                arguments: 'rgrp-msfnex20-10-CentralNode-GLB-dev cosmos-msfnex20-10-centralnode-glb-dev' 
+                workingDirectory: '$(Build.SourcesDirectory)'
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/feature/QA' )}}:
+            - task: AzureCLI@2
+              displayName: 'Upload Json files'
+              continueOnError: false
+              inputs:
+                azureSubscription: 'MSFAZX21 Data Lake QA-CentralNode-GLB'
+                scriptType: bash
+                scriptPath: '$(System.DefaultWorkingDirectory)/DevOps/ProjectPipelines/Cosmos/uploadjson.sh'
+                arguments: 'rgrp-msfnex21-10-CentralNode-GLB-qa cosmos-msfnex21-10-centralnode-glb-qa' 
+                workingDirectory: '$(Build.SourcesDirectory)'
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/feature/master' )}}:
+            - task: AzureCLI@2
+              displayName: 'Upload Json files'
+              continueOnError: false
+              inputs:
+                azureSubscription: 'MSFAZX22 Data Lake QA-CentralNode-GLB'
+                scriptType: bash
+                scriptPath: '$(System.DefaultWorkingDirectory)/DevOps/ProjectPipelines/Cosmos/uploadjson.sh'
+                arguments: 'rgrp-msfnex22-10-CentralNode-GLB-prd cosmos-msfnex22-10-centralnode-glb-prd' 
+                workingDirectory: '$(Build.SourcesDirectory)'

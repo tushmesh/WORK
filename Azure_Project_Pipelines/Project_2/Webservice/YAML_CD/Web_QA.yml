@@ -1,0 +1,131 @@
+# CI CD for AppService Deploy
+variables:
+ - group: CICD_VARIABLES
+ 
+trigger:
+  branches:
+    include:
+    - QA
+  paths:
+    include:
+    - Webserivce/*
+
+pool:
+  vmImage: 'windows-2019'
+  
+stages:
+- stage: Build
+  displayName: Validate_stage
+  jobs:
+    - job: Webserivce_Build_Deploy
+      displayName: 'Webserivce Compilation'
+      steps:
+
+ 
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+
+## Replace the Values
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i "s/USER_NAME/$(LQASSISUSERNAME)/" $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i "s/PASS_WORD/$(LQASSISPASSWORD)/" $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sql-dev-01/bnlwe-fr01-n-56690-pa01-sql-lqa-01/' $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-02/bnlwe-fr01-n-56690-pa01-sqldb-lqa-02/' $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-03/bnlwe-fr01-n-56690-pa01-sqldb-lqa-03/' $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i "s/WEBUSERNAME/$(WEBUSERNAME)/" $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i "s/WEBPASSWORD/$(WEBPASSWORD)/" $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i "s~WEBDESTINATIONFOLDER~$(WEBDESTINATIONFOLDER)~g"  $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              sed -i "s/WEBSFTPHOST/$(WEBSFTPHOST)/" $(System.DefaultWorkingDirectory)/Webserivce/UnileverFS/Web.config
+              
+        - task: NuGetToolInstaller@0
+          displayName: 'Use NuGet 4.4.1'
+          inputs:
+            versionSpec: 4.4.1
+
+        - task: NuGetCommand@2
+          displayName: 'NuGet restore'
+          inputs:
+            restoreSolution: '**/*.sln'
+        - task: VSBuild@1
+          displayName: 'Build solution'
+          inputs:
+            solution: '$(System.DefaultWorkingDirectory)/Webserivce/UnileverFS.sln'
+            msbuildArgs: '/p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="$(Agent.TempDirectory)\WebAppContent\\"'
+            platform: 'any cpu'
+            configuration: 'release'
+
+        - task: ArchiveFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            rootFolderOrFile: '$(Agent.TempDirectory)\WebAppContent'
+            includeRootFolder: false
+            archiveType: zip
+            archiveFile: '$(System.DefaultWorkingDirectory)/webservice.zip'
+            replaceExistingArchive: true
+
+        - publish: $(System.DefaultWorkingDirectory)/webservice.zip
+          displayName: 'Publish artifact'
+          artifact: webservice
+
+#################
+- stage: Archive
+  dependsOn: Build
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'Download Artifact'
+      pool: 
+       vmImage: 'ubuntu-latest'
+      steps:
+       - download: current
+         artifact: webservice
+       - template: ../../preliminary-steps.yml
+         parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'WEBQA'
+
+## Deployment of Webservice
+       - task: AzureRmWebAppDeployment@4
+         displayName: 'Deploy Azure App Service'
+         inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            appType: webApp
+            WebAppName: '$(website)'
+            packageForLinux: '$(Pipeline.Workspace)/webservice/webservice.zip'
+
+## TAG RESOURCES
+       - task: AzureCLI@2
+         displayName: 'Tagging Webservice on Azure Cloud'
+         continueOnError: false
+         inputs:
+           azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+           scriptLocation: 'inlineScript'
+           scriptType: 'bash'
+           inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Web/sites/$(website) \
+              --tags version=$(newVersion)
+
+## Applying TAG to a repo
+       - task: CmdLine@2
+         displayName: 'TAG REPO'
+         env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+         inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

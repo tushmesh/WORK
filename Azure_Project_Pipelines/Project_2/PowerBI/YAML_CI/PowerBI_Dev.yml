@@ -1,0 +1,51 @@
+# CI-CD for PowerBI 
+
+trigger:
+  branches:
+    include:
+    - development
+  paths:
+    include:
+    - PowerBI/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Validate_stage
+  displayName: Validate_stage
+  jobs:
+    - job: PowerBI
+      displayName: 'PowerBI Reports'
+      steps:
+        - task: CopyFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            SourceFolder: '$(System.DefaultWorkingDirectory)/PowerBI/'
+            Contents: '**.pbix'
+            TargetFolder: '$(System.DefaultWorkingDirectory)/PowerBI/reports'
+       
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish artifact'
+          inputs:
+            PathtoPublish: '$(System.DefaultWorkingDirectory)/PowerBI/reports'
+            ArtifactName: 'PowerBI'
+
+
+
+- stage: Download
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'Upload PowerBI Reports'
+      pool: 
+       vmImage: 'windows-latest'
+      steps:
+       - download: current
+         artifact: PowerBI
+
+       - task: PowerBIActions@5
+         inputs:
+          PowerBIServiceEndpoint: 'FS-PBI-SPN'
+          Action: 'Publish'
+          WorkspaceName: 'Unilever Food Solution - Russia'
+          PowerBIPath: '$(Pipeline.Workspace)/PowerBI/'

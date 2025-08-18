@@ -1,0 +1,117 @@
+# CI for ADF validation and exporting an ARM Template to deploy
+
+trigger:
+  branches:
+    include:
+    - development
+  paths:
+    include:
+    - ADF/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Validate_stage
+  displayName: Validate_stage
+  jobs:
+    - job: ARM_Validation
+      displayName: 'ARM Template Validation and Deployment'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - template: ../../preliminary-steps.yml
+          parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'ADFDEV'
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+            
+# Installs Node and the npm packages
+        - task: NodeTool@0
+          inputs:
+            versionSpec: '10.x'
+          displayName: 'Install Node.js'
+   
+        - task: Npm@1
+          inputs:
+            command: 'install'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            verbose: true
+          displayName: 'Install npm package'
+
+# Validates all of the Data Factory resources in the repository.
+        - task: Npm@1
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/ADF /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
+          displayName: 'Validate' 
+          
+# Validate and Generate ARM Template. 
+        - task: Npm@1
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm'
+            customCommand: 'run build export $(System.DefaultWorkingDirectory)/ADF /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) "ArmTemplate"'
+          displayName: 'Validate and Generate ARM template' 
+
+## Replace the value of the Newly created ARM Template
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i "s/USERNAME/$(DEVSSISUSERNAME)/" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json
+              sed -i "s/PASSWORD/$(DEVSSISPASSWORD)/" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json
+              sed -i "s/SFTPPASS/$(DEVSFTPPASSWORD)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHHOST/$(BLACKSMITHHOST)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHPORT/$(BLACKSMITHPORT)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+              sed -i "s/BLACKSMITHUSER/$(BLACKSMITHUSER)/g" $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/*.json
+# # ADF Deployment
+        - task: AzureResourceGroupDeployment@2
+          displayName: 'Data Factory Dev ARM Deploy'
+          inputs:
+           azureSubscription: ACS_Food_Solution_Dev_SPN
+           resourceGroupName: $(resgroup)
+           location: $(dataFactory_location)
+           csmFile: $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateForFactory.json
+           csmParametersFile: $(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json
+           deploymentMode: Incremental
+           deploymentName: '$(DataFactoryName)'
+
+
+            
+## TAG RESOURCES
+        - task: AzureCLI@2
+          displayName: 'Tagging ADF on Azure Cloud'
+          continueOnError: false
+          inputs:
+           azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+           scriptLocation: 'inlineScript'
+           scriptType: 'bash'
+           inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) \
+              --tags version=$(newVersion)
+
+# Zipping the Databricks files
+
+        - task: ArchiveFiles@2
+          continueOnError: false
+          displayName: 'Artifact Creation'
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/Deployment/YAML/ADF/npm/ArmTemplate/'
+            archiveType: zip
+            includeRootFolder: false
+            archiveFile: '$(System.DefaultWorkingDirectory)/$(arfname).zip'
+
+        - publish: $(System.DefaultWorkingDirectory)/$(arfname).zip
+          displayName: 'Publish artifact'
+          artifact: ARMTemplate

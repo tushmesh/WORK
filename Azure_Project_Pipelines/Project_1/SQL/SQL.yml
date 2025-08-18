@@ -1,0 +1,551 @@
+# DevOps CI/CD  Pipeline
+
+trigger:
+  branches:
+    include:
+    - master
+    - develop
+    - hotfix/*
+  paths:
+    include:
+    - SQL/CURATED/**
+    - SQL/ENRICHED/**
+ 
+variables:
+  - group: CICD_VARIABLES
+  
+stages:
+- stage: CI
+  displayName: CIBuild
+  jobs:
+
+  - job: CI
+    displayName: Build
+    timeoutInMinutes: 20
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    steps:
+     - task: PowerShell@2
+       displayName: 'Changeset'
+       inputs:
+         targetType: inline
+         script: |
+            $changeset = git diff --name-only  HEAD~1 HEAD > $(System.DefaultWorkingDirectory)/changes.txt
+            write-Host "##vso[task.setvariable variable=changeset;]$changeset"
+            gc $(System.DefaultWorkingDirectory)/changes.txt
+            $curated=Select-String -Path $(System.DefaultWorkingDirectory)/changes.txt -Pattern SQL/CURATED -SimpleMatch -Quiet
+            $enriched=Select-String -Path $(System.DefaultWorkingDirectory)/changes.txt -Pattern SQL/ENRICHED -SimpleMatch -Quiet
+            write-Host "##vso[task.setvariable variable=cicurated;]$curated"
+            write-Host "##vso[task.setvariable variable=cienriched;]$enriched"
+            write-Host "##vso[task.setvariable variable=curated;isOutput=true]$curated"
+            write-Host "##vso[task.setvariable variable=enriched;isOutput=true]$enriched"
+       name: setupvariable
+
+# Compilation for SQL CURATED
+     - task: MSBuild@1
+       condition: and(succeeded(), eq(variables['cicurated'], 'TRUE'))
+       displayName: 'MS Build for CURATED'
+       inputs:
+        solution: $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+
+# Compilation for SQL ENRICHED
+     - task: MSBuild@1
+       condition: and(succeeded(), eq(variables['cienriched'], 'TRUE'))
+       displayName: 'MS Build ENRICHED'
+       inputs:
+        solution: $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+
+##########################
+########## DEV ###########
+##########################
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+  - stage: CD
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    dependsOn: CI
+    jobs:
+    - job: CD_DEV
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for DEV'
+      variables:
+        localcurated: $[stageDependencies.CI.CI.outputs['setupvariable.curated']]
+        localenriched: $[stageDependencies.CI.CI.outputs['setupvariable.enriched']]
+      environment: DEV
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+## KeyVault
+              - task: AzureKeyVault@1
+                displayName: 'Get Credentials - DEV'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  KeyVaultName: 'keyvault-msfnex20-10-dev'
+                  SecretsFilter: 'DB-SUPPORT-MAINT-DBDPL'
+
+## BaseName of SQLProj - DEV
+              - task: PowerShell@2
+                displayName: 'File BaseName CURATED - DEV'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+                      $filebase_c= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_c;]$filebase_c"
+
+## Run Sqlproj for Curated - DEV
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'MS Build for CURATED - DEV'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Generate CURATED DB SQL'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ServerName: 'sql-msfnex20-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex20-10_curated-dev'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/bin/Debug/$(filebase_c).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+
+## Deploy CURATED - DEV
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                #displayName: 'Deploy CURATED - DEV'
+                #inputs:
+                  #azureSubscription: '$(devservicename)'
+                  #ServerName: 'sql-msfnex20-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex20-10_curated-dev'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex20-10_curated-dev_Script.sql
+
+
+
+## Archive for SQL CURATED - DEV
+              - task: ArchiveFiles@2
+                displayName: 'Archieve Curated Sql - DEV'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex20-10_curated-dev_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_c).zip'
+                    replaceExistingArchive: true
+
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_c).zip
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Publish artifact - DEV'
+                artifact: CURATED
+
+## BaseName of SQLProj Enriched - DEV
+              - task: PowerShell@2
+                displayName: 'File BaseName for ENRICHED - DEV'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+                      $filebase_e= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_e;]$filebase_e"
+
+## Run Sqlproj for Enriched - DEV
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'MS Build - ENRICHED - DEV'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Generate ENRICHED DB SQL'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ServerName: 'sql-msfnex20-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex20-10_enriched-dev'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/bin/Debug/$(filebase_e).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+
+## Deploy ENRICHED - DEV
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                #displayName: 'Deploy ENRICHED - DEV'
+                #inputs:
+                  #azureSubscription: '$(devservicename)'
+                  #ServerName: 'sql-msfnex20-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex20-10_enriched-dev'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex20-10_enriched-dev_Script.sql
+
+## Archive for SQL Enriched - DEV
+              - task: ArchiveFiles@2
+                displayName: 'Archieve ENRICHED Sql - DEV'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex20-10_enriched-dev_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_e).zip'
+                    replaceExistingArchive: true
+
+## Publish Enriched - DEV
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_e).zip
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Publish artifact ENRICHED - DEV'
+                artifact: ENRICHED
+
+##########################
+########## QA ############
+##########################
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/QA' )}}:
+  - stage: CD
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    dependsOn: CI
+    jobs:
+    - job: CD_QA
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for QA'
+      variables:
+        localcurated: $[stageDependencies.CI.CI.outputs['setupvariable.curated']]
+        localenriched: $[stageDependencies.CI.CI.outputs['setupvariable.enriched']]
+      environment: QA
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+## KeyVault
+              - task: AzureKeyVault@1
+                displayName: 'Get Credentials - QA'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  KeyVaultName: 'keyvault-msfnex21-10-qa'
+                  SecretsFilter: 'DB-SUPPORT-MAINT-DBDPL'
+
+## BaseName of CURATED SQLProj - QA
+              - task: PowerShell@2
+                displayName: 'File BaseName CURATED - QA'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+                      $filebase_c= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_c;]$filebase_c"
+
+## Run Sqlproj for Curated - QA
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'MS Build for CURATED - QA'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+
+## Generate SQL script - CURATED
+
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Generate CURATED DB SQL'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ServerName: 'sql-msfnex21-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex21-10_curated-qa'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/bin/Debug/$(filebase_c).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+                  
+## Deploy CURATED - QA
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                #displayName: 'Deploy CURATED - QA'
+                #inputs:
+                  #azureSubscription: '$(qaservicename)'
+                  #ServerName: 'sql-msfnex21-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex21-10_curated-qa'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex21-10_curated-qa_Script.sql
+                
+
+## Archive for SQL CURATED - QA
+              - task: ArchiveFiles@2
+                displayName: 'Archieve Curated Sql - QA'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex21-10_curated-qa_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_c).zip'
+                    replaceExistingArchive: true
+
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_c).zip
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Publish artifact - QA'
+                artifact: CURATED
+################
+### ENRICHED ###
+################
+## BaseName of SQLProj Enriched - QA
+              - task: PowerShell@2
+                displayName: 'File BaseName for ENRICHED - QA'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+                      $filebase_e= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_e;]$filebase_e"
+
+## Run Sqlproj for Enriched - QA
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'MS Build - ENRICHED - QA'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+
+## Generate SQL script
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Generate ENRICHED DB SQL'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  ServerName: 'sql-msfnex21-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex21-10_enriched-qa'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/bin/Debug/$(filebase_e).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+
+## Deploy ENRICHED - QA
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                #displayName: 'Deploy ENRICHED - QA'
+                #inputs:
+                  #azureSubscription: '$(qaservicename)'
+                  #ServerName: 'sql-msfnex21-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex21-10_enriched-qa'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex21-10_enriched-qa_Script.sql
+
+## Archive for SQL Enriched - DEV
+              - task: ArchiveFiles@2
+                displayName: 'Archieve ENRICHED Sql - QA'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex21-10_enriched-qa_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_e).zip'
+                    replaceExistingArchive: true
+
+## Publish Enriched - DEV
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_e).zip
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Publish artifact ENRICHED - DEV'
+                artifact: ENRICHED
+
+##########################
+########## PROD ##########
+##########################
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+  - stage: CD
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    dependsOn: CI
+    jobs:
+    - job: CD_PROD
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for PROD'
+      variables:
+        localcurated: $[stageDependencies.CI.CI.outputs['setupvariable.curated']]
+        localenriched: $[stageDependencies.CI.CI.outputs['setupvariable.enriched']]
+      environment: PROD
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+## KeyVault
+              - task: AzureKeyVault@1
+                displayName: 'Get Credentials - PROD'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  KeyVaultName: 'keyvault-msfnex22-10-prod'
+                  SecretsFilter: 'DB-SUPPORT-MAINT-DBDPL'
+
+## BaseName of SQLProj - PROD
+              - task: PowerShell@2
+                displayName: 'File BaseName CURATED - PROD'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+                      $filebase_c= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_c;]$filebase_c"
+
+## Run Sqlproj for Curated - PROD
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'MS Build for CURATED - PROD'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/*.sqlproj
+
+## Generate SQL script
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Generate CURATED DB SQL'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  ServerName: 'sql-msfnex22-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex22-10_curated-prod'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/bin/Debug/$(filebase_c).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/CURATED/$(subname)-CURATED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+
+## Deploy CURATED - PROD
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                #displayName: 'Deploy CURATED - PROD'
+                #inputs:
+                  #azureSubscription: '$(prodservicename)'
+                  #ServerName: 'sql-msfnex22-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex22-10_curated-prod'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex22-10_curated-prod_Script.sql
+
+## Archive for SQL CURATED - PROD
+              - task: ArchiveFiles@2
+                displayName: 'Archieve Curated Sql - PROD'
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex22-10_curated-prod_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_c).zip'
+                    replaceExistingArchive: true
+
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_c).zip
+                condition: and (succeeded(), eq (variables.localcurated, 'True'))
+                displayName: 'Publish artifact - PROD'
+                artifact: CURATED
+
+## BaseName of SQLProj Enriched - PROD
+              - task: PowerShell@2
+                displayName: 'File BaseName for ENRICHED - PROD'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                      $file= Get-Item $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+                      $filebase_e= $file.BaseName
+                      write-Host "##vso[task.setvariable variable=filebase_e;]$filebase_e"
+
+## Run Sqlproj for Enriched - PROD
+              - task: MSBuild@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'MS Build - ENRICHED - PROD'
+                inputs:
+                  solution: $(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/*.sqlproj
+
+              - task: SqlAzureDacpacDeployment@1
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Generate ENRICHED DB SQL'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  ServerName: 'sql-msfnex22-01.database.windows.net'
+                  DatabaseName: 'sqldb-msfnex22-10_enriched-prod'
+                  SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  deploymentAction: script
+                  deployType: DacpacTask
+                  DacpacFile: '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/bin/Debug/$(filebase_e).dacpac'
+                  PublishProfile:  '$(System.DefaultWorkingDirectory)/SQL/ENRICHED/$(subname)-ENRICHED/DEV_PUBLISH_CFG/DB_PROJECT.publish_DEV.publish.xml'
+                  IpDetectionMethod: AutoDetect
+
+## Deploy ENRICHED - PROD
+              #- task: SqlAzureDacpacDeployment@1
+                #condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                #displayName: 'Deploy ENRICHED - PROD'
+                #inputs:
+                  #azureSubscription: '$(prodservicename)'
+                  #ServerName: 'sql-msfnex22-01.database.windows.net'
+                  #DatabaseName: 'sqldb-msfnex22-10_enriched-prod'
+                  #SqlUsername: 'DB_SUPPORT_MAINT_DBDPL'
+                  #SqlPassword: $(DB-SUPPORT-MAINT-DBDPL)
+                  #deployType: SqlTask
+                  #SqlFile: $(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex22-10_enriched-prod_Script.sql
+
+## Archive for SQL Enriched - PROD
+              - task: ArchiveFiles@2
+                displayName: 'Archieve ENRICHED Sql - PROD'
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/GeneratedOutputFiles/sqldb-msfnex22-10_enriched-prod_Script.sql'
+                    includeRootFolder: true
+                    archiveType: 'zip'
+                    archiveFile: '$(System.DefaultWorkingDirectory)/$(filebase_e).zip'
+                    replaceExistingArchive: true
+
+## Publish Enriched - PROD
+              - publish: $(System.DefaultWorkingDirectory)/$(filebase_e).zip
+                condition: and (succeeded(), eq (variables.localenriched, 'True'))
+                displayName: 'Publish artifact ENRICHED - PROD'
+                artifact: ENRICHED

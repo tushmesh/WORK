@@ -1,0 +1,18 @@
+parameters:
+  - name: version
+    type: string
+
+steps:
+  - task: CmdLine@2
+    continueOnError: false
+    displayName: "Tag Repository"
+    inputs:
+      script: |
+        set -euoxv pipefail
+        git remote set-url origin https://$(CICD_PAT)@$(repo)
+        commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+        commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+        git config user.email "$commitAuthorEmail"
+        git config user.name "$commitAuthorName"
+        git tag -a '${{ parameters.version }}' -m "${{ parameters.version }}" $(Build.SourceVersion)
+        git push origin --tags

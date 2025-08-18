@@ -1,0 +1,156 @@
+# DevOps CI/CD Pipeline for LogicApps
+variables:
+ - group: CICD_VARIABLES
+
+trigger:
+  branches:
+    include:
+    - develop
+    - master
+    - QA
+  paths:
+    include:
+    - LogicApps/*
+
+## Which folder the change is 1,2,6,7
+template_1.yml
+template_2.yml
+template_6.yml
+template_7.yml
+stages:
+
+- stage: Dev
+  displayName: Build
+  jobs:
+   - job: Build
+     displayName: LogicApps
+     timeoutInMinutes: 20
+     pool:
+       vmImage: 'ubuntu-latest'
+
+     steps:
+
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i "s/AppId/$(AppId)/" $(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json
+              sed -i "s/AppKey/$(AppKey)/" $(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json
+              sed -i "s/TenantId/$(TenantId)/" $(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json
+
+## Replace the Values
+        - task: PowerShell@2
+          inputs:
+            targetType: filePath
+            filePath: '$(System.DefaultWorkingDirectory)/Deployment/YAML/LogicApps/YAML_CD/replace_qa.ps1'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/Deployment/YAML/LogicApps/YAML_CD'
+
+## Archive UFS_GLO_Cn_03
+        - task: ArchiveFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            rootFolderOrFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03'
+            archiveType: zip
+            archiveFile: '$(System.DefaultWorkingDirectory)/package/UFS_GLO_Cn_03.zip'
+            replaceExistingArchive: true
+
+## UFS_GLO_Cn_03 Publish              
+        - publish: $(System.DefaultWorkingDirectory)/package/UFS_GLO_Cn_03.zip
+          displayName: 'Publish '
+          artifact: 'UFS_GLO_Cn_03'
+
+## Deploy LogicApps UFS_GLO_Cn_03
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+        - task: AzureResourceManagerTemplateDeployment@3
+          displayName: 'ARM Template deployment: UFS_GLO_Cn_03'
+          inputs:
+            azureResourceManagerConnection: ACS_Food_Solution_Dev_SPN
+            subscriptionId: '$(azureSubscription)'
+            resourceGroupName: '$(resgroup)'
+            location: 'West Europe'
+            csmFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json'
+	    csmoverwrite: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/parameter_file_dev.json'
+            action: 'Create Or Update Resource Group'
+            templateLocation: 'Linked artifact'
+            deploymentMode: 'Incremental'
+
+## Deploy LogicApps UFS_GLO_Cn_03
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/QA' )}}:
+        - task: AzureResourceManagerTemplateDeployment@3
+          displayName: 'ARM Template deployment: UFS_GLO_Cn_03'
+          inputs:
+            azureResourceManagerConnection: ACS_Food_Solution_Dev_SPN
+            subscriptionId: '$(azureSubscription)'
+            resourceGroupName: '$(resgroup)'
+            location: 'West Europe'
+            csmFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json'
+	    csmoverwrite: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/parameter_file_QA.json'
+            action: 'Create Or Update Resource Group'
+            templateLocation: 'Linked artifact'
+            deploymentMode: 'Incremental'
+
+## Deploy LogicApps UFS_GLO_Cn_03
+#
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+        - task: AzureResourceManagerTemplateDeployment@3
+          displayName: 'ARM Template deployment: UFS_GLO_Cn_03'
+          inputs:
+            azureResourceManagerConnection: ACS_Food_Solution_Dev_SPN
+            subscriptionId: '$(azureSubscription)'
+            resourceGroupName: '$(resgroup)'
+            location: 'West Europe'
+            csmFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json'
+	    csmoverwrite: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/parameter_file_Prd.json'
+            action: 'Create Or Update Resource Group'
+            templateLocation: 'Linked artifact'
+            deploymentMode: 'Incremental'
+        - task: AzureResourceManagerTemplateDeployment@3
+          displayName: 'ARM Template deployment: UFS_GLO_Cn_03'
+          inputs:
+            azureResourceManagerConnection: ACS_Food_Solution_Dev_SPN
+            subscriptionId: '$(azureSubscription)'
+            resourceGroupName: '$(resgroup)'
+            location: 'West Europe'
+            csmFile: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/template.json'
+	    csmoverwrite: '$(System.DefaultWorkingDirectory)/LogicApps/UFS_GLO_Cn_03/parameter_file_dr.json'
+            action: 'Create Or Update Resource Group'
+            templateLocation: 'Linked artifact'
+            deploymentMode: 'Incremental'
+
+
+  ## TAG RESOURCES
+        - task: AzureCLI@2
+          displayName: 'Tagging LogicApps on Azure Cloud for UFS_GLO_QA_Cn_03'
+          continueOnError: false
+          inputs:
+              azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+              scriptLocation: 'inlineScript'
+              scriptType: 'bash'
+              inlineScript: |
+                  set -euovx pipefail
+                  echo -e "\e[1mWriting resource tag on Azure\e[0m"
+                  az tag create \
+                  --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Logic/workflows/UFS_GLO_QA_Cn_03 \
+                  --tags version=$(newVersion)
+
+  ## Applying TAG to a repo
+        - task: CmdLine@2
+          displayName: 'TAG REPO'
+          env: 
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          inputs:
+              script: |
+                git remote set-url origin https://$(CICD_PAT)@$(Repository)
+                commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+                commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+                git config user.email "$commitAuthorEmail"
+                git config user.name "$commitAuthorName"
+                git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+                git push origin --tags

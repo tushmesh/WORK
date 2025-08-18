@@ -1,0 +1,1107 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+parameters:
+  - name: DR_Enable
+    displayName: "Do you want to enable DR?"
+    values:
+      - Yes
+      - No
+  - name: Primary_region_accessible
+    displayName: "Is primary region accessible?"
+    values:
+      - Yes
+      - No
+  
+variables:
+ - group: CICD_VARIABLES
+   
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: 'ManualDeploy_PRDandDR'
+    displayName: 'Manual deploy of PRD and DR '
+    jobs:
+## Call template yml for AzureDatafactory
+      - job: LA1
+        displayName: 'LogicApps - AzureDatafactory'
+        
+        steps:
+         
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+              
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: 'AzureDataFactory LogicApp Prod deployment'
+                condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+                inputs:
+                  azureResourceManagerConnection: 'SPN_LogicApp'
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(prdresgroup)'
+                  location: 'West Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Components/AzureDataFactory/TPM_C1_AzureDataFactory_Template.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C1_AzureDataFactory_Parameters.json' # parameter file name for production will be different
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+
+              
+
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: AzureDataFactory LogicApp deployment on DR
+                inputs:
+                  azureResourceManagerConnection: SPN_LogicApp
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(drresgroup)'
+                  location: 'North Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Components/AzureDataFactory/TPM_C1_AzureDataFactory_Template.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C1_AzureDataFactory_Parameters.json' # parameter file name for DR will be different
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+
+
+## Call template yml for Database
+      - job: LA2
+        displayName: 'LogicApps - Database'
+        
+        steps:
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+             
+              - task: AzureCLI@2
+                continueOnError: false
+                displayName: 'Database Azure CLI to deploy  LA - PRD' 
+                condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+                inputs:
+                    azureSubscription: SPN_LogicApp
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: | 
+                          az  deployment group create --name 'TPM_ARABIA_PRD_C2_Database' -g $(prdresgroup) --template-file '$(System.DefaultWorkingDirectory)/Components/Database/TPM_DACH_C2_Database_Template.json' --parameters '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C2_Database_Parameters.json' --mode Incremental
+                    
+
+             
+
+              - task: AzureCLI@2
+                continueOnError: false
+                displayName: 'Database Azure CLI to deploy LA - DR' 
+                inputs:
+                    azureSubscription: SPN_LogicApp
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: | 
+                          az  deployment group create --name 'TPM_ARABIA_PRD_C2_Database' -g $(drresgroup) --template-file '$(System.DefaultWorkingDirectory)/Components/Database/TPM_DACH_C2_Database_Template.json' --parameters '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C2_Database_Parameters.json' --mode Incremental
+
+
+# ## Call template yml for LogAnalytics..
+      - job: LA3
+        displayName: 'LogicApps - LogAnalytics'
+        
+        steps:
+          # Change branch to master from master and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+              - task: cmdLine@2
+                
+                
+              - task: AzureCLI@2
+                continueOnError: false
+                displayName: 'LogAnalytics Azure CLI to deploy LA - PRD'
+                condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes')) 
+                inputs:
+                  azureSubscription: SPN_LogicApp
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: | 
+                    az deployment group create --name 'TPM_ARABIA_PRD_C7_LogAnalytics' -g $(prdresgroup) --template-file '$(System.DefaultWorkingDirectory)/Components/LogAnalytics/TPM_C7_LogAnalytics_Template.json' --parameters '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C7_LogAnalytics_Parameters.json' --mode Incremental
+
+              
+
+              - task: AzureCLI@2
+                continueOnError: false
+                displayName: 'LogAnalytics Azure CLI to deploy LA - DR' 
+                inputs:
+                  azureSubscription: SPN_LogicApp
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: | 
+                    az deployment group create --name 'TPM_ARABIA_PRD_C7_LogAnalytics' -g $(drresgroup) --template-file '$(System.DefaultWorkingDirectory)/Components/LogAnalytics/TPM_C7_LogAnalytics_Template.json' --parameters '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C7_LogAnalytics_Parameters.json' --mode Incremental
+        
+
+# ## Call template yml for Mail
+      - job: LA4
+        displayName: 'LogicApps - Mail'
+        
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+              
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: Mail LogicApp deployment on PROD
+                condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+                inputs:
+                  azureResourceManagerConnection: SPN_LogicApp
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(prdresgroup)'
+                  location: 'West Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Components/Mail/TPM_DACH_C3_Mail_Template.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C3_Mail_Parameters.json' 
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+
+              - task: cmdLine@2
+               
+                
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: Mail LogicApp deployment on DR
+                inputs:
+                  azureResourceManagerConnection: SPN_LogicApp
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(drresgroup)'
+                  location: 'North Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Components/Mail/TPM_DACH_C3_Mail_Template.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C3_Mail_Parameters.json' 
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+          
+
+# ## Call template yml for Mulesoft
+      - job: LA5
+        displayName: 'LogicApps - Mulesoft'
+        
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Mulesoft LogicApp deployment on PRD
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Components/Mulesoft/TPM_C4_Mulesoft_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C4_Mulesoft_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+            
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Mulesoft LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Components/Mulesoft/TPM_C4_Mulesoft_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C4_Mulesoft_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            
+
+          
+
+# ## Call template yml for Salesforce
+      - job: LA6
+        displayName: 'LogicApps - Salesforce'
+        
+        steps:
+          
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Salesforce LogicApp deployment on PRD
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Components/SalesforceUsingToken/TPM_C5_Salesforce_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_PRD_C5_Salesforce_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Salesforce LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Components/SalesforceUsingToken/TPM_C5_Salesforce_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/ComponentParams/TPM_ARABIA_DR_C5_Salesforce_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+# ## Call template yml for O10_IMS
+      - job: LA7
+        displayName: 'LogicApps - O10_IMS'
+        dependsOn: LA6
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O10_IMS LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_PRD_O10_IMS_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O10_IMS LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_O10_IMS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O10_IMS/TPM_ARABIA_DR_O10_IMS_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O11_PromotionalActuals
+      - job: LA8
+        displayName: 'LogicApps - O11_PromotionalActuals'
+        dependsOn: LA6
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O11_PromotionalActuals LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_PRD_O11_PromotionalActuals_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O11_PromotionalActuals LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_O11_PromotionalActuals_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals/TPM_ARABIA_DR_O11_PromotionalActuals_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+# ## Call template yml for O2_Customer
+      - job: LA9
+        displayName: 'LogicApps - O2_Customer'
+        dependsOn: LA6
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O2_Customer LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_PRD_O2_Customer_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O2_Customer LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_O2_Customer_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O2_Customer/TPM_ARABIA_DR_O2_Customer_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O3_Products
+      - job: LA10
+        displayName: 'LogicApps - O3_Products'
+        dependsOn: LA6
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O3_Products LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_PRD_O3_Products_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O3_Products LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_O3_Products_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O3_Products/TPM_ARABIA_DR_O3_Products_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+          
+
+# ## Call template yml for O6_Baseline
+      - job: LA11
+        displayName: 'LogicApps - O6_Baseline'
+        dependsOn: LA6
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O6_Baseline LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_PRD_O6_Baseline_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O6_Baseline LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_O6_Baseline_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O6_Baseline/TPM_ARABIA_DR_O6_Baseline_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O4_SFDataSync
+      - job: LA12
+        displayName: 'LogicApps - O4_SFDataSync'
+        dependsOn: LA11
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O4_SFDataSync LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_PRD_O4_SFDataSync_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O4_SFDataSync LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_O4_SFDataSync_template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O4_SFDataSync/TPM_ARABIA_DR_O4_SFDataSync_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O5_Products_UOM
+      - job: LA13
+        displayName: 'LogicApps - O5_Products_UOM'
+        dependsOn: LA12
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O5_Products_UOM LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_PRD_O5_Products_UOM_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O5_Products_UOM LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_O5_Products_UOM_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O5_Products_UOM/TPM_ARABIA_DR_O5_Products_UOM_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O7_Listprice_AWS
+      - job: LA14
+        displayName: 'LogicApps - O7_Listprice_AWS'
+        dependsOn: LA12
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O7_Listprice_AWS LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_PRD_O7_Listprice_AWS_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O7_Listprice_AWS LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_O7_Listprice_AWS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS/TPM_ARABIA_DR_O7_Listprice_AWS_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O9_SCC
+      - job: LA15
+        displayName: 'LogicApps - O9_SCC'
+        dependsOn: LA12
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O9_SCC LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_PRD_O9_SCC_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O9_SCC LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_O9_SCC_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O9_SCC/TPM_ARABIA_DR_O9_SCC_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for NightlyJob_COLD
+      - job: LA16
+        displayName: 'LogicApps - NightlyJob_COLD'
+        dependsOn: LA15
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+              - task: cmdLine@2
+                displayName: 'Replace values'
+                inputs:
+                  script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                    fi
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: 'O1_NightlyJob_COLD LogicApp Prod deployment'
+                condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+                inputs:
+                  azureResourceManagerConnection: 'SPN_LogicApp'
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(prdresgroup)'
+                  location: 'West Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_PRD_O1_NightlyJob_COLD_Parameters.json' 
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+              - task: cmdLine@2               
+                displayName: 'Replace values for DR'
+                inputs:
+                  script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                    fi
+              - task: AzureResourceManagerTemplateDeployment@3
+                displayName: O1_NightlyJob_COLD LogicApp deployment on DR
+                inputs:
+                  azureResourceManagerConnection: SPN_LogicApp
+                  subscriptionId: '$(azureSubscription)'
+                  resourceGroupName: '$(drresgroup)'
+                  location: 'North Europe'
+                  csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_O1_NightlyJob_COLD.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD/TPM_ARABIA_DR_O1_NightlyJob_COLD_Parameters.json' 
+                  templateLocation: 'Linked artifact'
+                  deploymentMode: 'Incremental'
+
+# ## Call template yml for NightlyJob_HOT
+      - job: LA17
+        displayName: 'LogicApps - NightlyJob_HOT'
+        dependsOn: LA15
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O1_NightlyJob_HOT LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_PRD_O1_NightlyJob_HOT_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: O1_NightlyJob_HOT LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_O1_NightlyJob_HOT.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT/TPM_ARABIA_DR_O1_NightlyJob_HOT_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+          
+# ## Call template yml for NightlyJob_WARM
+      - job: LA18
+        displayName: 'LogicApps - NightlyJob_WARM'
+        dependsOn: LA15
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'NightlyJob_WARM LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_PRD_O1_NightlyJob_WARM_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: NightlyJob_WARM LogicApp deployment on DR
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_O1_NightlyJob_WARM.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM/TPM_ARABIA_DR_O1_NightlyJob_WARM_Parameters.json' 
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+# ## Call template yml for O19_IOMP
+      - job: LA19
+        displayName: 'LogicApps - O19_IOMP'
+        dependsOn: LA15
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O19_IOMP LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_PRD_O19_IOMP_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O19_IOMP LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_O19_IOMP_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O19_IOMP/TPM_ARABIA_DR_O19_IOMP_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+# ## Call template yml for O21_DeltaCalc
+      - job: LA20
+        displayName: 'LogicApps - O21_DeltaCalc'
+        dependsOn: LA15
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O21_DeltaCalc LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_PRD_O21_DeltaCalc_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O21_DeltaCalc LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_O21_DeltaCalc_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc/TPM_ARABIA_DR_O21_DeltaCalc_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+# ## Call template yml for O20_GDS
+      - job: LA21
+        displayName: 'LogicApps - O20_GDS'
+        dependsOn: LA20
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O20_GDS LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_PRD_O20_GDS_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O20_GDS LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_O20_GDS_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O20_GDS/TPM_ARABIA_DR_O20_GDS_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+
+
+# ## Call template yml for O22_PromoConditions_RebateAgreement
+      - job: LA22
+        displayName: 'LogicApps - O22_PromoConditions_RebateAgreement'
+        dependsOn: LA20
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O22_PromoConditions_RebateAgreement LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_PRD_O22_PromoConditions_RebateAgreement_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O22_PromoConditions_RebateAgreement LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_O22_PromoConditions_RebateAgreement_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement/TPM_ARABIA_DR_O22_PromoConditions_RebateAgreement_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+# ## Call template yml for O22_PromoConditions_SalesDeal
+      - job: LA23
+        displayName: 'LogicApps - O22_PromoConditions_SalesDeal'
+        dependsOn: LA20
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - task: cmdLine@2
+              displayName: 'Replace values'
+              inputs:
+                script: |
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                    else
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O22_PromoConditions_SalesDeal LogicApp Prod deployment'
+              condition: and(succeeded(), eq('${{ parameters.Primary_region_accessible }}', 'Yes'))
+              inputs:
+                azureResourceManagerConnection: 'SPN_LogicApp'
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(prdresgroup)'
+                location: 'West Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_PRD_O22_PromoConditions_SalesDeal_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'
+            - task: cmdLine@2               
+              displayName: 'Replace values for DR'
+              inputs:
+                script: |
+                    git checkout $(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json
+                    if [ "${{parameters.DR_Enable}}" = "Yes" ]; then
+                      sed -i 's,"state": "Enabled","state": "Enabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                      cat '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                    else
+                      sed -i 's,"state": "Enabled","state": "Disabled",' '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                    fi
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: 'O22_PromoConditions_SalesDeal LogicApp deployment on DR'
+              inputs:
+                azureResourceManagerConnection: SPN_LogicApp
+                subscriptionId: '$(azureSubscription)'
+                resourceGroupName: '$(drresgroup)'
+                location: 'North Europe'
+                csmFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_O22_PromoConditions_SalesDeal_Template.json'
+                csmParametersFile: '$(System.DefaultWorkingDirectory)/Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal/TPM_ARABIA_DR_O22_PromoConditions_SalesDeal_Parameters.json'
+                templateLocation: 'Linked artifact'
+                deploymentMode: 'Incremental'

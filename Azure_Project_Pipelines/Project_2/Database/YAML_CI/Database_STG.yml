@@ -1,0 +1,93 @@
+# DevOps CI  Pipeline
+variables:
+ - group: CICD_VARIABLES
+
+trigger:
+  branches:
+    include:
+    - development
+  paths:
+    include:
+    - Database/UFS_STG/*
+
+stages:
+- stage: Build
+  displayName: Build
+  jobs:
+
+  - job: Build
+    displayName: Build
+    timeoutInMinutes: 20
+    pool:
+      vmImage: 'windows-latest'
+      demands:
+      - msbuild
+      - sqlpackage
+    steps:
+## Keyvault
+     - task: AzureKeyVault@1
+       displayName: 'Azure Dev KeyVault'
+       inputs:
+        azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+        KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+
+ ## Compilation for UFS_STG
+     - task: MSBuild@1
+       displayName: 'MS Build'
+       inputs:
+        solution: $(System.DefaultWorkingDirectory)/Database/UFS_STG/*.sqlproj
+
+## Archive for UFS_STG
+     - task: ArchiveFiles@2
+       inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/Database/UFS_STG/bin/Debug/UFS_STG.dacpac'
+        includeRootFolder: true
+        archiveType: 'zip'
+        archiveFile: '$(System.DefaultWorkingDirectory)/STG.zip'
+        replaceExistingArchive: true
+
+## STG Publish              
+     - publish: $(System.DefaultWorkingDirectory)/STG.zip
+       displayName: 'Publish dacpac'
+       artifact: 'UFS_STG'
+
+## Deploy STG
+     - task: SqlAzureDacpacDeployment@1
+       displayName: 'Azure SQL STG Dacpac Task'
+       inputs:
+         azureSubscription: ACS_Food_Solution_Dev_SPN
+         ServerName: 'bnlwe-fr01-d-56690-pa01-sql-dev-01.database.windows.net'
+         DatabaseName: 'bnlwe-fr01-d-56690-pa01-sqldb-dev-03'
+         SqlUsername: $(DEVSSISUSERNAME)
+         SqlPassword: $(DEVSSISPASSWORD)
+         DacpacFile: $(System.DefaultWorkingDirectory)/Database/UFS_STG/bin/Debug/UFS_STG.dacpac
+
+#################
+- stage: Archive
+  dependsOn: Build
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'Download Artifact'
+      pool: 
+       vmImage: 'ubuntu-latest'
+      steps:
+       - template: ../../preliminary-steps.yml
+         parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'SQLSTGDEV'
+
+ ## TAG Resources               
+       - task: AzureCLI@2
+         displayName: 'Tagging SQL DB on Azure Cloud'
+         continueOnError: false
+         inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            scriptLocation: 'inlineScript'
+            scriptType: 'bash'
+            inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(devsqlserver)/databases/$(dbname) \
+              --tags version=$(newVersion)

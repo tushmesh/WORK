@@ -1,0 +1,120 @@
+# CI-CD for SSIS
+variables:
+ - group: CICD_VARIABLES
+ 
+trigger:
+  branches:
+    include:
+    - QA
+  paths:
+    include:
+    - SSIS/*
+
+pool:
+  vmImage: 'windows-latest'
+  
+stages:
+- stage: Build
+  displayName: Validate_stage
+  jobs:
+    - job: SSIS_Build_Deploy
+      displayName: 'SSIS Compilation'
+      steps:
+
+ 
+## Keyvault
+        - task: AzureKeyVault@1
+          displayName: 'Azure Dev KeyVault'
+          inputs:
+            azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+            KeyVaultName: 'bnlwe-fr01-n-56690-kv-02'
+
+## Replace the Values
+        - task: cmdLine@2
+          displayName: 'Replace values'
+          inputs:
+            script: |
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-01/bnlwe-fr01-n-56690-pa01-sqldb-lqa-01/' $(System.DefaultWorkingDirectory)/SSIS/*.*
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-02/bnlwe-fr01-n-56690-pa01-sqldb-lqa-02/' $(System.DefaultWorkingDirectory)/SSIS/*.*
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-03/bnlwe-fr01-n-56690-pa01-sqldb-lqa-03/' $(System.DefaultWorkingDirectory)/SSIS/*.*
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sqldb-dev-04/bnlwe-fr01-n-56690-pa01-sqldb-lqa-04/' $(System.DefaultWorkingDirectory)/SSIS/*.*
+              sed -i 's/bnlwe-fr01-d-56690-pa01-sql-dev-01/bnlwe-fr01-n-56690-pa01-sql-lqa-01/' $(System.DefaultWorkingDirectory)/SSIS/*.*
+              sed -i "s/USERNAME/$(LQASSISUSERNAME)/" $(System.DefaultWorkingDirectory)/SSIS/*.conmgr
+              sed -i "s/PASSWORD/$(LQASSISPASSWORD)/" $(System.DefaultWorkingDirectory)/SSIS/*.conmgr
+              sed -i 's/bnlwestgunileverfr01054/bnlwestgunileverfr01115/' $(System.DefaultWorkingDirectory)/SSIS/UFS_Blob.conmgr
+              sed -i -e "s|DEVBlob|$(LQABlob)|g" $(System.DefaultWorkingDirectory)/SSIS/UFS_Blob.conmgr
+        - task: SSISBuild@1
+          displayName: 'SSIS Compilation'
+          inputs:
+           projectPath: '$(System.DefaultWorkingDirectory)/SSIS/UFS_ETL.dtproj'
+           outputPath: '$(Build.ArtifactStagingDirectory)/SSISBuild'
+
+        - task: ArchiveFiles@2
+          displayName: 'Archive Files'
+          inputs:
+            rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/SSISBuild'
+            includeRootFolder: true
+            archiveType: zip
+            archiveFile: '$(System.DefaultWorkingDirectory)/SSISPackage.zip'
+            replaceExistingArchive: true
+
+        - publish: $(System.DefaultWorkingDirectory)/SSISPackage.zip
+          displayName: 'Publish artifact'
+          artifact: SSISPackage
+
+## Deploy
+        - task: SSISDeploy@1
+          displayName: 'SSIS Deploy'
+          inputs:
+            sourcePath: '$(Build.ArtifactStagingDirectory)/SSISBuild'
+            destinationType: ssisdb
+            destinationServer: '$(ssissrv)'
+            destinationPath: '/SSISDB/UFS/UFS_ETL'
+            authType: sql
+            username: '$(LQASSISUSERNAME)'
+            password: '$(LQASSISPASSWORD)'
+
+#################
+- stage: Archive
+  dependsOn: Build
+  jobs:
+    - job: DownloadArtifact
+      displayName: 'Download Artifact'
+      pool: 
+       vmImage: 'ubuntu-latest'
+      steps:
+       - template: ../../preliminary-steps.yml
+         parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'SSISQA'
+
+## TAG RESOURCES
+       - task: AzureCLI@2
+         displayName: 'Tagging SSIS on Azure Cloud'
+         continueOnError: false
+         inputs:
+           azureSubscription: 'ACS_Food_Solution_Dev_SPN'
+           scriptLocation: 'inlineScript'
+           scriptType: 'bash'
+           inlineScript: |
+              set -euovx pipefail
+              echo -e "\e[1mWriting resource tag on Azure\e[0m"
+              az tag create \
+              --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Sql/servers/$(ssisserver) \
+              --tags version=$(newVersion)
+
+## Applying TAG to a repo
+       - task: CmdLine@2
+         displayName: 'TAG REPO'
+         env: 
+           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+         inputs:
+            script: |
+              git remote set-url origin https://$(CICD_PAT)@$(Repository)
+              commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+              commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+              git config user.email "$commitAuthorEmail"
+              git config user.name "$commitAuthorName"
+              git tag -a $(arfname)_$(newVersion) -m "$(newVersion)"
+              git push origin --tags

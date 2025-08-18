@@ -1,0 +1,565 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+    - develop
+    - QA
+    - master
+    - hotfix/*
+  paths:
+    include:
+    - ADF/*
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: CICD_VARIABLES
+  - name: isdevelop
+    value: $[eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/develop')]
+  - name: isqa
+    value: $[eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/QA')]
+  - name: ismaster
+    value: $[eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/master')]
+
+resources:
+  repositories:
+    - repository: ReleaseAdmin
+      type: git
+      name: 'Principal Administration/Release-Administration'
+
+stages:
+# Validation for DEV
+- stage: 'ValidationDEV'
+  #condition: or(succeeded(), eq(variables.isdevelop, 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  condition: and(succeeded(), or(eq(variables['isdevelop'], 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/develop')))
+  displayName: 'DEV Validation'
+  jobs:
+    - job: "Validation"
+      steps:
+# Load Variables
+        - checkout: ReleaseAdmin
+          path: s/ReleaseAdmin
+          clean: false
+          
+        - checkout: Self
+          clean: false
+          path: s/SubjectArea
+        - task: PowerShell@2
+          displayName: 'Checkout feature branch'
+          inputs:
+              targetType: 'inline'
+              script: |
+                cd $(System.DefaultWorkingDirectory)/ReleaseAdmin
+                git checkout feature/task-group-template
+                cd ..
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Subject Area
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+            targetType: filePath
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Global
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+            targetType: filePath
+
+# Install Node and the npm packages
+        - task: NodeTool@0
+          displayName: 'Install Node.js'
+          inputs:
+            versionSpec: '14.x'
+        - task: Npm@1
+          displayName: 'Install npm package'
+          inputs:
+            command: 'install'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            verbose: true
+
+# Validates all of the Data Factory resources in the repository.
+        - task: Npm@1
+          displayName: 'Validate'
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/SubjectArea/ADF/ /subscriptions/"$(json.SubscriptionIdDEV)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)"'
+
+# Validation for QA
+- stage: 'ValidationQA'
+  #condition: or(succeeded(), eq(variables.isqa, 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/QA'))
+  condition: and(succeeded(), or(eq(variables['isqa'], 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/QA')))
+  displayName: 'QA Validation'
+  jobs:
+    - job: "Validation"
+      steps:
+# Load Variables
+        - checkout: ReleaseAdmin
+          path: s/ReleaseAdmin
+          clean: false
+          
+        - checkout: Self
+          clean: false
+          path: s/SubjectArea
+        - task: PowerShell@2
+          displayName: 'Checkout feature branch'
+          inputs:
+              targetType: 'inline'
+              script: |
+                cd $(System.DefaultWorkingDirectory)/ReleaseAdmin
+                git checkout feature/task-group-template
+                cd ..
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Subject Area
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+            targetType: filePath
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Global
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+            targetType: filePath
+
+# Install Node and the npm packages
+        - task: NodeTool@0
+          displayName: 'Install Node.js'
+          inputs:
+            versionSpec: '14.x'
+        - task: Npm@1
+          displayName: 'Install npm package'
+          inputs:
+            command: 'install'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            verbose: true
+
+# Validates all of the Data Factory resources in the repository.
+        - task: Npm@1
+          displayName: 'Validate'
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/SubjectArea/ADF/ /subscriptions/"$(json.SubscriptionIdQA)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)"'
+
+# Validation for Prod
+- stage: 'ValidationPRD'
+  #condition: or(succeeded(), eq(variables.ismaster, 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: and(succeeded(), or(eq(variables['ismaster'], 'true'), startsWith(variables['Build.SourceBranch'], 'refs/heads/master')))
+  displayName: 'Prod Validation'
+  jobs:
+    - job: "Validation"
+      steps:
+# Load Variables
+        - checkout: ReleaseAdmin
+          path: s/ReleaseAdmin
+          clean: false
+          
+        - checkout: Self
+          clean: false
+          path: s/SubjectArea
+        - task: PowerShell@2
+          displayName: 'Checkout feature branch'
+          inputs:
+              targetType: 'inline'
+              script: |
+                cd $(System.DefaultWorkingDirectory)/ReleaseAdmin
+                git checkout feature/task-group-template
+                cd ..
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Subject Area
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+            targetType: filePath
+        - task: PowerShell@2
+          displayName: Load Variables from JSON configuration - Global
+          inputs:
+            filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+            targetType: filePath
+
+# Install Node and the npm packages
+        - task: NodeTool@0
+          displayName: 'Install Node.js'
+          inputs:
+            versionSpec: '14.x'
+        - task: Npm@1
+          displayName: 'Install npm package'
+          inputs:
+            command: 'install'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            verbose: true
+
+# Validates all of the Data Factory resources in the repository.
+        - task: Npm@1
+          displayName: 'Validate'
+          inputs:
+            command: 'custom'
+            workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+            customCommand: 'run build validate  $(System.DefaultWorkingDirectory)/SubjectArea/ADF/ /subscriptions/"$(json.SubscriptionIdPROD)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)"'
+
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+  - stage: DEVDeploy
+    dependsOn: ValidationDEV
+    jobs:
+    - job: CD
+    - deployment: Approval
+      displayName: 'Awaiting for Approval for DEV'
+      environment: DEV
+      variables:
+      - name: SAT
+        value: $(json.SubjectAreaType)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - checkout: ReleaseAdmin
+                path: s/ReleaseAdmin
+                clean: false
+              
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Subject Area
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                  targetType: filePath
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Global
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                  targetType: filePath
+              - task: NodeTool@0
+                displayName: 'Install Node.js'
+                inputs:
+                  versionSpec: '14.x'
+
+              - task: Npm@1
+                displayName: 'Install npm package'
+                inputs:
+                  command: 'install'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  verbose: true
+              - task: Npm@1
+                displayName: 'Validate and Generate ARM template'
+                inputs:
+                  command: 'custom'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  customCommand: 'run build export $(System.DefaultWorkingDirectory)/SubjectArea/ADF /subscriptions/"$(json.SubscriptionIdDEV)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)" "ArmTemplate"'
+
+              - task: PowerShell@2
+                displayName: 'Replace ADB Path'
+                inputs:
+                    targetType: inline
+                    script: 'Get-ChildItem $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm -recurse -include *.json| ForEach-Object { (Get-Content $_.FullName) -replace ("/Repos/$(subname)-GLB/*.*/ADB", "$(adb_path)") | Set-Content  $_.FullName }'
+
+
+              - task: ArchiveFiles@2
+                continueOnError: false
+                displayName: 'Artifact Creation'
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/'
+                    archiveType: zip
+                    includeRootFolder: false
+                    archiveFile: '$(System.DefaultWorkingDirectory)/ARM.zip'
+
+              - task: AzurePowerShell@5
+                displayName: 'Stop Triggers'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV) -predeployment $true -deleteDeployment $false'
+                  azurePowerShellVersion: LatestVersion 
+                  
+              - task: AzureResourceGroupDeployment@2
+                displayName: 'Import Azure Data Factory - Enterprise'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  resourceGroupName: '$(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)'
+                  location: '$(json.ResourceLocation)'
+                  csmFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json'
+                  #overrideParameters: -factoryName "$(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)" -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameDEV ) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameDEV ) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameDEV ) -LKS_JTI_ADB_BRICK_properties_typeProperties_existingClusterId $(json.DatabricksClusterIdDEV) -LKS_JTI_ADB_BRICK_properties_typeProperties_accessToken_secretName $(json.DatabricksClusterSecretNameDEV)
+                  deploymentName: 'deploy-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)'
+                condition: and(succeeded(),eq(variables.SAT, 'Enterprise'))
+
+ # Start Trigger script
+
+              - task: AzurePowerShell@5
+                displayName: 'Start Triggers'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV) -predeployment $false -deleteDeployment $true'
+                  azurePowerShellVersion: LatestVersion
+          
+              - task: AzurePowerShell@5
+                displayName: 'Post deployment configure Azure Data Factory'
+                inputs:
+                  azureSubscription: '$(devservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_ConfigureDataFactory.ps1'
+                  ScriptArguments: '-datafactoryname "$(json.DataFactoryPrefix)-$(json.ResourcePrefixDEV)-$(json.SubjectAreaName)-$(json.ResourceSuffixDEV)" -logworkspacename "$(json.LogAnalyticsPrefix)-$(json.ResourcePrefixDEV)-principal-$(json.ResourceSuffixDEV)" -resourcegroupname "$(json.ResourceGroupPrefix)-$(json.ResourcePrefixDEV)-principal-$(json.ResourceSuffixDEV)"'
+                  azurePowerShellVersion: LatestVersion
+              
+## Publish ARM Template
+              - publish: $(System.DefaultWorkingDirectory)/ARM.zip
+                displayName: 'Publish artifact'
+                artifact: ARMTemplate
+                
+## QA Deployment
+- ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/QA') }}:
+  - stage: QADeploy
+    dependsOn: ValidationQA
+    jobs:
+      - deployment: Approval
+        displayName: 'Awaiting for Approval for QA'
+        environment: QA
+        variables:
+        - name: SAT
+          value: $(json.SubjectAreaType)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: ReleaseAdmin
+                path: s/ReleaseAdmin
+                clean: false
+              
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Subject Area
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                  targetType: filePath
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Global
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                  targetType: filePath
+              - task: NodeTool@0
+                displayName: 'Install Node.js'
+                inputs:
+                  versionSpec: '14.x'
+
+              - task: Npm@1
+                displayName: 'Install npm package'
+                inputs:
+                  command: 'install'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  verbose: true
+              - task: Npm@1
+                displayName: 'Validate and Generate ARM template'
+                inputs:
+                  command: 'custom'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  customCommand: 'run build export $(System.DefaultWorkingDirectory)/SubjectArea/ADF /subscriptions/"$(json.SubscriptionIdQA)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)" "ArmTemplate"'
+
+              - task: PowerShell@2
+                displayName: 'Replace ADB Path'
+                inputs:
+                    targetType: inline
+                    script: 'Get-ChildItem $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm -recurse -include *.json| ForEach-Object { (Get-Content $_.FullName) -replace ("/Repos/$(subname)-GLB/*.*/ADB", "$(adb_path)") | Set-Content  $_.FullName }'
+
+              - task: PowerShell@2
+                displayName: 'Replace ADF contents'
+                inputs:
+                  targetType: filePath
+                  filePath: $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/replace_adf_qa.ps1
+                  failOnStderr: true
+                  workingDirectory: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF'
+
+              - task: ArchiveFiles@2
+                continueOnError: false
+                displayName: 'Artifact Creation'
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/'
+                    archiveType: zip
+                    includeRootFolder: false
+                    archiveFile: '$(System.DefaultWorkingDirectory)/ARM.zip'
+
+## Stop Triggers
+              - task: AzurePowerShell@5
+                displayName: 'Stop Triggers'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA) -predeployment $true -deleteDeployment $false'
+                  azurePowerShellVersion: LatestVersion 
+
+## ADF Deployment
+              - task: AzureResourceGroupDeployment@2
+                displayName: 'Import Azure Data Factory - Enterprise'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  resourceGroupName: '$(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)'
+                  location: '$(json.ResourceLocation)'
+                  csmFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json'
+                  #overrideParameters: -factoryName "$(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)" -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameQA ) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameQA ) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNameQA ) -LKS_JTI_ADB_BRICK_properties_typeProperties_existingClusterId $(json.DatabricksClusterIdQA) -LKS_JTI_ADB_BRICK_properties_typeProperties_accessToken_secretName $(json.DatabricksClusterSecretNameQA)
+                  deploymentName: 'deploy-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)'
+                condition: and(succeeded(),eq(variables.SAT, 'Enterprise'))
+
+## Start Triggers
+              - task: AzurePowerShell@5
+                displayName: 'Start Triggers'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA) -predeployment $false -deleteDeployment $true'
+                  azurePowerShellVersion: LatestVersion
+
+              - task: AzurePowerShell@5
+                displayName: 'Post deployment configure Azure Data Factory'
+                inputs:
+                  azureSubscription: '$(qaservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_ConfigureDataFactory.ps1'
+                  ScriptArguments: '-datafactoryname "$(json.DataFactoryPrefix)-$(json.ResourcePrefixQA)-$(json.SubjectAreaName)-$(json.ResourceSuffixQA)" -logworkspacename "$(json.LogAnalyticsPrefix)-$(json.ResourcePrefixQA)-principal-$(json.ResourceSuffixQA)" -resourcegroupname "$(json.ResourceGroupPrefix)-$(json.ResourcePrefixQA)-principal-$(json.ResourceSuffixQA)"'
+                  azurePowerShellVersion: LatestVersion
+
+## Publish ARM Template
+              - publish: $(System.DefaultWorkingDirectory)/ARM.zip
+                displayName: 'Publish artifact'
+                artifact: ARMTemplate
+                
+## PROD Deployment
+
+- ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/master') }}: 
+  - stage: PRODDeploy
+    dependsOn: ValidationPRD
+    jobs:
+      - deployment: Approval
+        displayName: 'Awaiting for Approval for PROD'
+        environment: PROD
+        variables:
+        - name: SAT
+          value: $(json.SubjectAreaType)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: ReleaseAdmin
+                path: s/ReleaseAdmin
+                clean: false
+              
+              - checkout: Self
+                clean: false
+                path: s/SubjectArea
+
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Subject Area
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_LoadLocalVariables.ps1
+                  targetType: filePath
+              - task: PowerShell@2
+                displayName: Load Variables from JSON configuration - Global
+                inputs:
+                  filePath: $(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/Common_LoadGlobalVariables.ps1
+                  targetType: filePath
+              - task: NodeTool@0
+                displayName: 'Install Node.js'
+                inputs:
+                  versionSpec: '14.x'
+
+              - task: Npm@1
+                displayName: 'Install npm package'
+                inputs:
+                  command: 'install'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  verbose: true
+              - task: Npm@1
+                displayName: 'Validate and Generate ARM template'
+                inputs:
+                  command: 'custom'
+                  workingDir: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm'
+                  customCommand: 'run build export $(System.DefaultWorkingDirectory)/SubjectArea/ADF /subscriptions/"$(json.SubscriptionIdPROD)"/resourceGroups/"$(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)"/providers/Microsoft.DataFactory/factories/"$(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)" "ArmTemplate"'
+# Replace IR Value
+              - task: PowerShell@2
+                displayName: 'Replace IR Value'
+                inputs:
+                  targetType: inline
+                  script: 'Get-ChildItem $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ -recurse -include *.json| ForEach-Object { (Get-Content $_.FullName) -replace (''\b-devqa\b'', ''-prd'') | Set-Content  $_.FullName }'
+
+              - task: PowerShell@2
+                displayName: 'Replace ADB Path'
+                inputs:
+                    targetType: inline
+                    script: 'Get-ChildItem $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm -recurse -include *.json| ForEach-Object { (Get-Content $_.FullName) -replace ("/Repos/$(subname)-GLB/*.*/ADB", "$(adb_path)") | Set-Content  $_.FullName }'
+                    
+              - task: PowerShell@2
+                displayName: 'Replace ADF contents'
+                inputs:
+                  targetType: filePath
+                  filePath: $(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/replace_adf_prd.ps1
+                  failOnStderr: true
+                  workingDirectory: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF'
+
+              - task: ArchiveFiles@2
+                continueOnError: false
+                displayName: 'Artifact Creation'
+                inputs:
+                    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/'
+                    archiveType: zip
+                    includeRootFolder: false
+                    archiveFile: '$(System.DefaultWorkingDirectory)/ARM.zip'
+
+## Stop Triggers
+              - task: AzurePowerShell@5
+                displayName: 'Stop Triggers'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD) -predeployment $true -deleteDeployment $false'
+                  azurePowerShellVersion: LatestVersion
+              - task: AzureResourceGroupDeployment@2
+                displayName: 'Import Azure Data Factory - Enterprise'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  resourceGroupName: '$(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)'
+                  location: '$(json.ResourceLocation)'
+                  csmFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json'
+                  csmParametersFile: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ARMTemplateParametersForFactory.json'
+                  #overrideParameters: -factoryName "$(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)" -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_CURATED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNamePROD ) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ASQL_ENRICHED_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNamePROD ) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalId $(ServicePrincipalId) -LKS_JTI_ADL_properties_typeProperties_servicePrincipalKey_secretName $(json.ServicePrincipalSecretNamePROD ) -LKS_JTI_ADB_BRICK_properties_typeProperties_existingClusterId $(json.DatabricksClusterIdPROD) -LKS_JTI_ADB_BRICK_properties_typeProperties_accessToken_secretName $(json.DatabricksClusterSecretNamePROD)
+                  deploymentName: 'deploy-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)'
+                condition: and(succeeded(),eq(variables.SAT, 'Enterprise'))
+
+## Start Triggers
+              - task: AzurePowerShell@5
+                displayName: 'Start Triggers'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/stop_start_trigger.ps1'
+                  ScriptArguments: '-armTemplate "$(System.DefaultWorkingDirectory)/SubjectArea/DevOps/ProjectPipelines/ADF/npm/ArmTemplate/ArmTemplateForFactory.json" -ResourceGroupName $(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD) -DataFactoryName $(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD) -predeployment $false -deleteDeployment $true'
+                  azurePowerShellVersion: LatestVersion
+              - task: AzurePowerShell@5
+                displayName: 'Post deployment configure Azure Data Factory'
+                inputs:
+                  azureSubscription: '$(prodservicename)'
+                  ScriptPath: '$(System.DefaultWorkingDirectory)/ReleaseAdmin/Scripts/SubjectArea_ConfigureDataFactory.ps1'
+                  ScriptArguments: '-datafactoryname "$(json.DataFactoryPrefix)-$(json.ResourcePrefixPROD)-$(json.SubjectAreaName)-$(json.ResourceSuffixPROD)" -logworkspacename "$(json.LogAnalyticsPrefix)-$(json.ResourcePrefixPROD)-principal-$(json.ResourceSuffixPROD)" -resourcegroupname "$(json.ResourceGroupPrefix)-$(json.ResourcePrefixPROD)-principal-$(json.ResourceSuffixPROD)"'
+                  azurePowerShellVersion: LatestVersion
+
+## Publish ARM Template
+              - publish: $(System.DefaultWorkingDirectory)/ARM.zip
+                displayName: 'Publish artifact'
+                artifact: ARMTemplate
+                
+              - task: PowerShell@2
+                displayName: 'Tag Repo'
+                inputs:
+                 targetType: inline
+                 script: |
+                    cd $(System.DefaultWorkingDirectory)/SubjectArea
+                    $commitAuthorName=$(git log --format='%an' $(Build.SourceVersion))
+                    $commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion))
+                    git config user.email "$commitAuthorEmail"
+                    git config user.name "$commitAuthorName"
+                    $date=$(Get-Date -Format yyyy-MM-dd_HH.mm);
+                    git remote set-url origin https://$(PATTOKEN)@$(GITURL)
+                    git tag -a ADF_$date -m "ADF Prod deployment on $date"
+                    git push origin --tags

@@ -1,0 +1,285 @@
+parameters:
+  - name: cicdChain
+    type: string
+  - name: infoPath
+    type: string
+  - name: env
+    type: string
+
+steps:
+  - task: CmdLine@2
+    displayName: "Preliminary Steps"
+    continueOnError: false
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mEnsuring unix-like source files termination\e[0m"
+        cd $(Build.SourcesDirectory)/Deployment/YAML/
+        find scripts -type f -exec chmod +x {} \;
+        #find $(Build.SourcesDirectory)/ -type f -print0 | xargs -0 dos2unix
+        echo -e "\e[1mInitializing python virtual environment\e[0m"
+        #python3.9 -m venv .localPy3Env
+        #source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+        python -m pip install -r scripts/python/requirements.txt
+        echo -e "\e[1mReading informations from ${{parameters.infoPath}}\e[0m"
+        currentRelease=$(scripts/python/shyaml get-value "currentRelease" < "${{parameters.infoPath}}")
+        orgname=$(scripts/python/shyaml get-value "AZ_ORG_NAME" < "${{parameters.infoPath}}")
+        prgname=$(scripts/python/shyaml get-value "AZ_PRJ_NAME" < "${{parameters.infoPath}}")
+        repo=$(scripts/python/shyaml get-value "git-repo" < "${{parameters.infoPath}}")
+        azureSubscription=$(scripts/python/shyaml get-value "azureSubscription" < "${{parameters.infoPath}}")
+        feed=$(scripts/python/shyaml get-value "feed" < "${{parameters.infoPath}}")
+        tennantId=$(scripts/python/shyaml get-value "tennantId" < "${{parameters.infoPath}}")
+        resgroup=$(scripts/python/shyaml get-value "resourceGroup" < "${{parameters.infoPath}}")
+        prdresgroup=$(scripts/python/shyaml get-value "prdresourceGroup" < "${{parameters.infoPath}}")
+        devservername=$(scripts/python/shyaml get-value "devservername" < "${{parameters.infoPath}}")
+        devsqlserver=$(scripts/python/shyaml get-value "devsqlserver" < "${{parameters.infoPath}}")
+        qasqlserver=$(scripts/python/shyaml get-value "qasqlserver" < "${{parameters.infoPath}}")
+        prdsqlserver=$(scripts/python/shyaml get-value "prdsqlserver" < "${{parameters.infoPath}}")
+
+        if [[ "${{parameters.env}}" == "SSISDEV" ]]; then
+           ssisserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisserver" < "${{parameters.infoPath}}")
+           ssisdb=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisdb" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssisserver]${ssisserver}"
+           echo "##vso[task.setvariable variable=ssisdb]${ssisdb}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+
+        if [[ "${{parameters.env}}" == "SSISQA" ]]; then
+           ssisserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisserver" < "${{parameters.infoPath}}")
+           ssisdb=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisdb" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssisserver]${ssisserver}"
+           echo "##vso[task.setvariable variable=ssisdb]${ssisdb}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SSISPRD" ]]; then
+           ssisserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisserver" < "${{parameters.infoPath}}")
+           ssisdb=$(scripts/python/shyaml get-value "${{parameters.env}}.ssisdb" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssisserver]${ssisserver}"
+           echo "##vso[task.setvariable variable=ssisdb]${ssisdb}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "ADFDEV" ]]; then
+           DataFactoryName=$(scripts/python/shyaml get-value "${{parameters.env}}.DataFactoryName" < "${{parameters.infoPath}}")
+           dataFactory_location=$(scripts/python/shyaml get-value "${{parameters.env}}.dataFactory_location" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=DataFactoryName]${DataFactoryName}"
+           echo "##vso[task.setvariable variable=dataFactory_location]${dataFactory_location}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "ADFQA" ]]; then
+           DataFactoryName=$(scripts/python/shyaml get-value "${{parameters.env}}.DataFactoryName" < "${{parameters.infoPath}}")
+           dataFactory_location=$(scripts/python/shyaml get-value "${{parameters.env}}.dataFactory_location" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=DataFactoryName]${DataFactoryName}"
+           echo "##vso[task.setvariable variable=dataFactory_location]${dataFactory_location}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "ADFPRD" ]]; then
+           DataFactoryName=$(scripts/python/shyaml get-value "${{parameters.env}}.DataFactoryName" < "${{parameters.infoPath}}")
+           dataFactory_location=$(scripts/python/shyaml get-value "${{parameters.env}}.dataFactory_location" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=DataFactoryName]${DataFactoryName}"
+           echo "##vso[task.setvariable variable=dataFactory_location]${dataFactory_location}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_Dev_Cn_01" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_QA_Cn_01" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_PRD_Cn_01" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_Dev_Cn_02" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_QA_Cn_02" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_PRD_Cn_02" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_Dev_Cn_03" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_QA_Cn_03" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "LA_GLO_PRD_Cn_03" ]]; then
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "WEBDEV" ]]; then           
+           website=$(scripts/python/shyaml get-value "${{parameters.env}}.website" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=website]${website}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "WEBQA" ]]; then           
+           website=$(scripts/python/shyaml get-value "${{parameters.env}}.website" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=website]${website}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "WEBPRD" ]]; then           
+           website=$(scripts/python/shyaml get-value "${{parameters.env}}.website" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=website]${website}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SSASDEV" ]]; then           
+           ssasserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssasserver" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           ssassqlserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssassqlserver" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssasserver]${ssasserver}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=ssassqlserver]${ssassqlserver}" 
+        fi
+
+        if [[ "${{parameters.env}}" == "SSASQA" ]]; then           
+           ssasserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssasserver" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           ssassqlserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssassqlserver" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssasserver]${ssasserver}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=ssassqlserver]${ssassqlserver}" 
+        fi
+
+        if [[ "${{parameters.env}}" == "SSASPRD" ]]; then           
+           ssasserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssasserver" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           ssassqlserver=$(scripts/python/shyaml get-value "${{parameters.env}}.ssassqlserver" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=ssasserver]${ssasserver}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=ssassqlserver]${ssassqlserver}" 
+        fi
+        ############ SQL ############
+
+        if [[ "${{parameters.env}}" == "SQLDMDEV" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+
+        if [[ "${{parameters.env}}" == "SQLDMQA" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SQLDMPRD" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+
+        if [[ "${{parameters.env}}" == "SQLDWDEV" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SQLDWQA" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SQLDWPRD" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+
+        if [[ "${{parameters.env}}" == "SQLSTGDEV" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+
+        if [[ "${{parameters.env}}" == "SQLSTGQA" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        
+        if [[ "${{parameters.env}}" == "SQLSTGPRD" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        
+        if [[ "${{parameters.env}}" == "SQLLOGDEV" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SQLLOGQA" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        if [[ "${{parameters.env}}" == "SQLLOGPRD" ]]; then
+           dbname=$(scripts/python/shyaml get-value "${{parameters.env}}.dbname" < "${{parameters.infoPath}}")
+           arfname=$(scripts/python/shyaml get-value "${{parameters.env}}.arfname" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=dbname]${dbname}"
+           echo "##vso[task.setvariable variable=arfname]${arfname}"
+        fi
+        
+        echo "##vso[task.setvariable variable=currentRelease]${currentRelease}"
+        echo "##vso[task.setvariable variable=orgname]${orgname}"
+        echo "##vso[task.setvariable variable=prgname]${prgname}"
+        echo "##vso[task.setvariable variable=repo]${repo}"
+        echo "##vso[task.setvariable variable=azureSubscription]${azureSubscription}"
+        echo "##vso[task.setvariable variable=feed]${feed}"
+        echo "##vso[task.setvariable variable=tennantId]${tennantId}"
+        echo "##vso[task.setvariable variable=resgroup]${resgroup}" 
+        echo "##vso[task.setvariable variable=prdresgroup]${prdresgroup}" 
+        echo "##vso[task.setvariable variable=devservername]${devservername}"
+        echo "##vso[task.setvariable variable=devsqlserver]${devsqlserver}"
+        echo "##vso[task.setvariable variable=qasqlserver]${qasqlserver}"
+        echo "##vso[task.setvariable variable=prdsqlserver]${prdsqlserver}"
+
+  #- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/development' )}}:
+  - template: new-version.yml
+    parameters:
+      env: ${{parameters.env}}
+
+  - task: CmdLine@2
+    displayName: "Export new version number"
+    continueOnError: false
+    inputs:
+      script: |
+          set -euo pipefail
+          cd $(Build.SourcesDirectory)/Deployment/YAML/
+          currVer=$(cat taglist.lst)
+          new_version=$(cat .new_version)
+          echo "##vso[task.setvariable variable=newVersion]${new_version}"
+          echo "##vso[task.setvariable variable=currVer]${currVer}"

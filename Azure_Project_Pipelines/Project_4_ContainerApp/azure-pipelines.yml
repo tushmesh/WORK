@@ -1,0 +1,232 @@
+trigger:
+  branches:
+    include:
+      - develop    # DEV environment
+      - release/*  # DEMO environment
+      - main       # PROD environment
+
+  paths:
+    include:
+      - agents/orchestrator_sk/**
+      - agents/mcp_server_m365/**
+      - agents/m365_agent/**
+      - agents/device_agent/**
+parameters:
+  - name: 'all_agents'
+    displayName: 'Enter all to deploy all agents'
+    type: string
+    default: ''  # User can provide this at pipeline execution time
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  imageTag: $(Build.BuildId)
+  # Environment-specific variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/develop') }}:
+    envName: 'DEV'
+    env: 'dev'
+    reg_group: 'ADNOC_Agentic_Dev'
+    con_reg: 'crconaidevweu001.azurecr.io'
+    reg_name: 'crconaidevweu001'
+    az_Subscription: 'CONAI-SERVICE-CONNECTION'
+  ${{ if startswith(variables['Build.SourceBranch'], 'refs/heads/release') }}:
+    envName: 'DEMO'
+    env: 'prd'
+    reg_group: 'ADNOC_Agentic_Prd'
+    con_reg: 'crconaiprdweu001.azurecr.io'
+    reg_name: 'crconaiprdweu001'
+    az_Subscription: 'CONAI-SERVICE-CONNECTION'
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+    envName: 'PROD'
+    azureSubscription: 'CONAI-SERVICE-CONNECTION'
+
+stages:
+- stage: detect
+  jobs:
+    - job: detect_changes
+      displayName: 'Detect Changes'
+      steps:
+        - checkout: self
+          fetchDepth: 2
+          persistCredentials: true
+      
+        - script: |
+            echo "Detecting changed files..."
+            CHANGED=$(git diff --name-only HEAD HEAD~1)
+            echo "Files Changed: $CHANGED"
+
+            for FOLDER in orchestrator_sk mcp_server_m365 m365_agent device_agent; do
+              if echo "$CHANGED" | grep -q "^agents/$FOLDER/"; then
+                echo "##vso[task.setvariable variable=$FOLDER;isOutput=true]true"
+                echo $FOLDER
+              else
+                echo "##vso[task.setvariable variable=$FOLDER;isOutput=true]false"
+              fi
+            done
+            cp -rf $(Build.SourcesDirectory)/common_lib $(Build.SourcesDirectory)/agents/orchestrator_sk/
+            cp -rf $(Build.SourcesDirectory)/common_lib $(Build.SourcesDirectory)/agents/mcp_server_m365/
+            cp -rf $(Build.SourcesDirectory)/common_lib $(Build.SourcesDirectory)/agents/m365_agent/
+            cp -rf $(Build.SourcesDirectory)/common_lib $(Build.SourcesDirectory)/agents/device_agent/
+          displayName: 'Detect changes in agents folders'
+          name: folder_changed
+
+#####################################################################################################
+#################################################### BUILD & PUSH ###################################
+#################################################### BUILD & PUSH ###################################
+#####################################################################################################
+- stage: compile
+  dependsOn: detect
+  condition: succeeded('detect')
+  jobs:
+    - job: Build_and_Push
+      variables:
+        orchChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.orchestrator_sk'] ]
+        mcpserverChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.mcp_server_m365'] ]
+        mcpagentChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.m365_agent'] ]
+        mcpdeviceChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.device_agent'] ]
+      
+      steps:
+
+## orchestrator_sk
+        - task: Docker@2
+          condition: or(eq(variables.orchChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+          displayName: 'Build: orchestrator'
+          inputs:
+            containerRegistry: ${{ variables.reg_name }}
+            repository: 'orchestrator'
+            command: buildAndPush
+            Dockerfile: 'agents/orchestrator_sk/dockerfile'
+            buildContext: '$(Build.SourcesDirectory)'
+            tags: '${{ variables.envName }}-$(imageTag)'
+
+## mcp_server_m365
+        - task: Docker@2
+          condition: or(eq(variables.mcpserverChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+          displayName: 'Build: mcp_server_m365'
+          inputs:
+            containerRegistry: ${{ variables.reg_name }}
+            repository: 'mcp_server_m365'
+            command: 'buildAndPush'
+            Dockerfile: 'agents/mcp_server_m365/dockerfile'
+            buildContext: '$(Build.SourcesDirectory)'
+            tags: '${{ variables.envName }}-$(imageTag)'
+
+## m365_agent
+        - task: Docker@2
+          condition: or(eq(variables.mcpagentChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+          displayName: 'Build: m365_agent'
+          inputs:
+            containerRegistry: ${{ variables.reg_name }}
+            repository: 'm365_agent'
+            command: 'buildAndPush'
+            Dockerfile: 'agents/m365_agent/dockerfile'
+            buildContext: '$(Build.SourcesDirectory)'
+            tags: '${{ variables.envName }}-$(imageTag)'
+
+## device_agent
+        - task: Docker@2
+          condition: or(eq(variables.mcpdeviceChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+          displayName: 'Build: device_agent'
+          inputs:
+            containerRegistry: ${{ variables.reg_name }}
+            repository: 'device_agent'
+            command: 'buildAndPush'
+            Dockerfile: 'agents/device_agent/dockerfile'
+            buildContext: '$(Build.SourcesDirectory)'
+            tags: '${{ variables.envName }}-$(imageTag)'            
+#####################################################################################################
+#################################################### DEPLOY #########################################
+#################################################### DEPLOY #########################################
+#####################################################################################################
+- stage: Deploy
+  dependsOn: 
+    - compile
+    - detect
+  condition: succeeded('compile')
+  jobs:
+    - job: DeployApps
+      variables:
+        orchChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.orchestrator_sk'] ]
+        mcpserverChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.mcp_server_m365'] ]
+        mcpagentChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.m365_agent'] ]
+        mcpdeviceChanged: $[ stageDependencies.detect.detect_changes.outputs['folder_changed.device_agent'] ]
+
+      steps:
+
+## orchestrator
+      - task: AzureCLI@2
+        displayName: 'Deploy orchestrator (${{ variables.envName }})'
+        condition: or(eq(variables.orchChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+        inputs:
+          azureSubscription: '${{ variables.az_Subscription }}'
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az containerapp update \
+              --name conapp-conai-${{ variables.env }}-weu-001 \
+              --resource-group  ${{ variables.reg_group }} \
+              --container-name orchestrator \
+              --image ${{ variables.con_reg }}/orchestrator:${{ variables.envName }}-$(imageTag) \
+              --set-env-vars \
+                "AUTH_BYPASS=True" \
+                "ENVIRONMENT=DEV" \
+                "CPG_KEY_VAULT_TENANT_ID=eff4a4ad-46e1-45b6-a7cd-695cbb6e92e4"
+
+## device_agent
+      - task: AzureCLI@2
+        displayName: 'Deploy device_agent (${{ variables.envName }})'
+        condition: or(eq(variables.mcpdeviceChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+        inputs:
+          azureSubscription: '${{ variables.az_Subscription }}'
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az containerapp update \
+              --name conapp-conai-${{ variables.env }}-weu-002 \
+              --resource-group ${{ variables.reg_group }} \
+              --container-name mcpagent365 \
+              --image ${{ variables.con_reg }}/device_agent:${{ variables.envName }}-$(imageTag) \
+              --set-env-vars \
+                "AUTH_BYPASS=True" \
+                "ENVIRONMENT=DEV" \
+                "CPG_KEY_VAULT_TENANT_ID=eff4a4ad-46e1-45b6-a7cd-695cbb6e92e4"
+                
+## mcp_server_m365
+      - task: AzureCLI@2
+        displayName: 'Deploy mcp_server_m365 (${{ variables.envName }})'
+        condition: or(eq(variables.mcpserverChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+        inputs:
+          azureSubscription: '${{ variables.az_Subscription }}'
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az containerapp update \
+              --name conapp-conai-${{ variables.env }}-weu-005 \
+              --resource-group ${{ variables.reg_group }} \
+              --container-name mcpserverm365 \
+              --image ${{ variables.con_reg }}/mcp_server_m365:${{ variables.envName }}-$(imageTag) \
+              --set-env-vars \
+                "AUTH_BYPASS=True" \
+                "ENVIRONMENT=DEV" \
+                "CPG_KEY_VAULT_TENANT_ID=eff4a4ad-46e1-45b6-a7cd-695cbb6e92e4"
+
+## m365_agent
+      - task: AzureCLI@2
+        displayName: 'Deploy m365_agent (${{ variables.envName }})'
+        condition: or(eq(variables.mcpagentChanged, 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'))
+        inputs:
+          azureSubscription: '${{ variables.az_Subscription }}'
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az containerapp update \
+              --name conapp-conai-${{ variables.env }}-weu-006 \
+              --resource-group ${{ variables.reg_group }} \
+              --container-name mcpagent365 \
+              --image ${{ variables.con_reg }}/m365_agent:${{ variables.envName }}-$(imageTag) \
+              --set-env-vars \
+                "AUTH_BYPASS=True" \
+                "ENVIRONMENT=DEV" \
+                "CPG_KEY_VAULT_TENANT_ID=eff4a4ad-46e1-45b6-a7cd-695cbb6e92e4"
+

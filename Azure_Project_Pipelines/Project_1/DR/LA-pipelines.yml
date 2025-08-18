@@ -1,0 +1,779 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+      - develop
+      - SQA
+      - PPD
+      - master
+  paths:
+    include:
+      - Components/*
+      - Orchestrators/ARABIA/Orchestrators/*    #this path is for other logic apps to be devloped.
+    exclude:                  # exclude 2 folders from components which are not part of logic apps..!
+      - Components/GZipExtractandTransform/*
+      - Components/BlobStorageExternal/*
+
+variables:
+ - group: CICD_VARIABLES
+ 
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: 'GetChangeSet'
+    displayName: 'Get ChangeSet'
+    jobs:
+      - job: 'ChangeSet'
+        displayName: 'ChangeSet'
+        steps:
+
+          - task: CmdLine@2
+            displayName: 'Check Diff'
+            name: setupvariable
+            inputs:
+              script: |
+                git diff --name-only  HEAD~1 HEAD > $(System.DefaultWorkingDirectory)/changeset.txt
+                cat $(System.DefaultWorkingDirectory)/changeset.txt
+                LA1="$(grep -w 'Components/AzureDataFactory'  $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA2="$(grep -w 'Components/Database' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA3="$(grep -w 'Components/LogAnalytics' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA4="$(grep -w 'Components/Mail' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA5="$(grep -w 'Components/Mulesoft' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA6="$(grep -w 'Components/SalesforceUsingToken' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA7="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_COLD' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA8="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_HOT' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA9="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O1_NightlyJob_WARM' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA10="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O2_Customer' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA11="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O3_Products' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA12="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O6_Baseline' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA13="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O7_Listprice_AWS' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA14="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O4_SFDataSync' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA15="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O5_Products_UOM' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA16="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O9_SCC' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA17="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O10_IMS' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA18="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O11_PromotionalActuals' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA19="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O19_IOMP' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA20="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O20_GDS' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA21="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O21_DeltaCalc' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA22="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_RebateAgreement' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                LA23="$(grep -w 'Orchestrators/ARABIA/Orchestrators/O22_PromoConditions_SalesDeal' $(System.DefaultWorkingDirectory)/changeset.txt)"
+                
+                ## Check for the changed files 
+                if [ ! -z "$LA1" ]
+                then
+                    echo "##vso[task.setvariable variable=LA1;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA2" ]
+                then
+                    echo "##vso[task.setvariable variable=LA2;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA3" ]
+                then
+                    echo "##vso[task.setvariable variable=LA3;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA4" ]
+                then
+                    echo "##vso[task.setvariable variable=LA4;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA5" ]
+                then
+                    echo "##vso[task.setvariable variable=LA5;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA6" ]
+                then
+                    echo "##vso[task.setvariable variable=LA6;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA7" ]
+                then
+                    echo "##vso[task.setvariable variable=LA7;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA8" ]
+                then
+                    echo "##vso[task.setvariable variable=LA8;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA9" ]
+                then
+                    echo "##vso[task.setvariable variable=LA9;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA10" ]
+                then
+                    echo "##vso[task.setvariable variable=LA10;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA11" ]
+                then
+                    echo "##vso[task.setvariable variable=LA11;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA12" ]
+                then
+                    echo "##vso[task.setvariable variable=LA12;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA13" ]
+                then
+                    echo "##vso[task.setvariable variable=LA13;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA14" ]
+                then
+                    echo "##vso[task.setvariable variable=LA14;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA15" ]
+                then
+                    echo "##vso[task.setvariable variable=LA15;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA16" ]
+                then
+                    echo "##vso[task.setvariable variable=LA16;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA17" ]
+                then
+                    echo "##vso[task.setvariable variable=LA17;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA18" ]
+                then
+                    echo "##vso[task.setvariable variable=LA18;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA19" ]
+                then
+                    echo "##vso[task.setvariable variable=LA19;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA20" ]
+                then
+                    echo "##vso[task.setvariable variable=LA20;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA21" ]
+                then
+                    echo "##vso[task.setvariable variable=LA21;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA22" ]
+                then
+                    echo "##vso[task.setvariable variable=LA22;isOutput=true]yes"
+                fi
+                if [ ! -z "$LA23" ]
+                then
+                    echo "##vso[task.setvariable variable=LA23;isOutput=true]yes"
+                fi
+
+             #   rm -rf $(System.DefaultWorkingDirectory)/changeset.txt
+## Call template yml for AzureDatafactory
+      - job: LA1
+        displayName: 'LogicApps - AzureDatafactory'
+        variables:
+          LAADF: $[dependencies.ChangeSet.outputs['setupvariable.LA1']]
+        condition: and(succeeded(), eq(variables.LAADF, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA1_ADF.yml
+              parameters:
+                source: develop
+             #   live: true
+ 
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA1_ADF.yml
+              parameters:
+                source: SQA
+          
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA1_ADF.yml
+              parameters:
+                source: PPD
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA1_ADF.yml
+              parameters:
+                source: master
+
+## Call template yml for Database
+      - job: LA2
+        displayName: 'LogicApps - Database'
+        variables:
+          LADB: $[dependencies.ChangeSet.outputs['setupvariable.LA2']]
+        condition: and(succeeded(), eq(variables.LADB, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA2_Database.yml
+              parameters:
+                source: develop
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA2_Database.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA2_Database.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA2_Database.yml
+              parameters:
+                source: master
+
+## Call template yml for LogAnalytics
+      - job: LA3
+        displayName: 'LogicApps - LogAnalytics'
+        variables:
+          LAANA: $[dependencies.ChangeSet.outputs['setupvariable.LA3']]
+        condition: and(succeeded(), eq(variables.LAANA, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA3_LogAnalytics.yml
+              parameters:
+                source: develop
+
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA3_LogAnalytics.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA3_LogAnalytics.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA3_LogAnalytics.yml
+              parameters:
+                source: master
+
+## Call template yml for Mail
+      - job: LA4
+        displayName: 'LogicApps - Mail'
+        variables:
+          LAMAIL: $[dependencies.ChangeSet.outputs['setupvariable.LA4']]
+        condition: and(succeeded(), eq(variables.LAMAIL, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA4_Mail.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA4_Mail.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA4_Mail.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA4_Mail.yml
+              parameters:
+                source: master
+
+## Call template yml for Mulesoft
+      - job: LA5
+        displayName: 'LogicApps - Mulesoft'
+        variables:
+          LAMULE: $[dependencies.ChangeSet.outputs['setupvariable.LA5']]
+        condition: and(succeeded(), eq(variables.LAMULE, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA5_Mulesoft.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA5_Mulesoft.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA5_Mulesoft.yml
+              parameters:
+                source: PPD
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA5_Mulesoft.yml
+              parameters:
+                source: master
+
+## Call template yml for Salesforce
+      - job: LA6
+        displayName: 'LogicApps - Salesforce'
+        variables:
+          LASALE: $[dependencies.ChangeSet.outputs['setupvariable.LA6']]
+        condition: and(succeeded(), eq(variables.LASALE, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA6_Salesforce.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA6_Salesforce.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA6_Salesforce.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA6_Salesforce.yml
+              parameters:
+                source: master
+
+## Call template yml for NightlyJob_COLD
+      - job: LA7
+        displayName: 'LogicApps - NightlyJob_COLD'
+        variables:
+          LANJCOLD: $[dependencies.ChangeSet.outputs['setupvariable.LA7']]
+        condition: and(succeeded(), eq(variables.LANJCOLD, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA7_NightlyJob_cold.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA7_NightlyJob_cold.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA7_NightlyJob_cold.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA7_NightlyJob_cold.yml
+              parameters:
+                source: master
+
+## Call template yml for NightlyJob_HOT
+      - job: LA8
+        displayName: 'LogicApps - NightlyJob_HOT'
+        variables:
+          LANJHOT: $[dependencies.ChangeSet.outputs['setupvariable.LA8']]
+        condition: and(succeeded(), eq(variables.LANJHOT, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA8_NightlyJob_hot.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA8_NightlyJob_hot.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA8_NightlyJob_hot.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA8_NightlyJob_hot.yml
+              parameters:
+                source: master
+
+## Call template yml for NightlyJob_WARM
+      - job: LA9
+        displayName: 'LogicApps - NightlyJob_WARM'
+        variables:
+          LANJWARM: $[dependencies.ChangeSet.outputs['setupvariable.LA9']]
+        condition: and(succeeded(), eq(variables.LANJWARM, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA9_NightlyJob_warm.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA9_NightlyJob_warm.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA9_NightlyJob_warm.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA9_NightlyJob_warm.yml
+              parameters:
+                source: master
+
+## Call template yml for O2_Customer
+      - job: LA10
+        displayName: 'LogicApps - O2_Customer'
+        variables:
+          LACUSTOMER: $[dependencies.ChangeSet.outputs['setupvariable.LA10']]
+        condition: and(succeeded(), eq(variables.LACUSTOMER, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA10_O2_Customer.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA10_O2_Customer.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA10_O2_Customer.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA10_O2_Customer.yml
+              parameters:
+                source: master
+
+## Call template yml for O3_Products
+      - job: LA11
+        displayName: 'LogicApps - O3_Products'
+        variables:
+          LAPRODUCT: $[dependencies.ChangeSet.outputs['setupvariable.LA11']]
+        condition: and(succeeded(), eq(variables.LAPRODUCT, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA11_O3_Products.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA11_O3_Products.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA11_O3_Products.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA11_O3_Products.yml
+              parameters:
+                source: master
+
+## Call template yml for O6_Baseline
+      - job: LA12
+        displayName: 'LogicApps - O6_Baseline'
+        variables:
+          LABASELINE: $[dependencies.ChangeSet.outputs['setupvariable.LA12']]
+        condition: and(succeeded(), eq(variables.LABASELINE, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA12_O6_Baseline.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA12_O6_Baseline.yml
+              parameters:
+                source: develop
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA12_O6_Baseline.yml
+              parameters:
+                source: SQA
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA12_O6_Baseline.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA12_O6_Baseline.yml
+              parameters:
+                source: master
+
+## Call template yml for O7_Listprice_AWS
+      - job: LA13
+        displayName: 'LogicApps - O7_Listprice_AWS'
+        variables:
+          LALPAWS: $[dependencies.ChangeSet.outputs['setupvariable.LA13']]
+        condition: and(succeeded(), eq(variables.LALPAWS, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA13_O7_Listprice_AWS.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA13_O7_Listprice_AWS.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA13_O7_Listprice_AWS.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA13_O7_Listprice_AWS.yml
+              parameters:
+                source: master
+## Call template yml for O4_SFDataSync
+      - job: LA14
+        displayName: 'LogicApps - O4_SFDataSync'
+        variables:
+          LA04SFD: $[dependencies.ChangeSet.outputs['setupvariable.LA14']]
+        condition: and(succeeded(), eq(variables.LA04SFD, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA14_O4_SFDataSync.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA14_O4_SFDataSync.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA14_O4_SFDataSync.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA14_O4_SFDataSync.yml
+              parameters:
+                source: master
+## Call template yml for O5_Products_UOM
+      - job: LA15
+        displayName: 'LogicApps - O5_Products_UOM'
+        variables:
+          LA05PUOM: $[dependencies.ChangeSet.outputs['setupvariable.LA15']]
+        condition: and(succeeded(), eq(variables.LA05PUOM, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA15_O5_Products_UOM.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA15_O5_Products_UOM.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA15_O5_Products_UOM.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA15_O5_Products_UOM.yml
+              parameters:
+                source: master
+## Call template yml for O9_SCC
+      - job: LA16
+        displayName: 'LogicApps - O9_SCC'
+        variables:
+          LA09SCC: $[dependencies.ChangeSet.outputs['setupvariable.LA16']]
+        condition: and(succeeded(), eq(variables.LA09SCC, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA16_O9_SCC.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA16_O9_SCC.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA16_O9_SCC.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA16_O9_SCC.yml
+              parameters:
+                source: master
+## Call template yml for O10_IMS
+      - job: LA17
+        displayName: 'LogicApps - O10_IMS'
+        variables:
+          LA010IMS: $[dependencies.ChangeSet.outputs['setupvariable.LA17']]
+        condition: and(succeeded(), eq(variables.LA010IMS, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA17_O10_IMS.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA17_O10_IMS.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA17_O10_IMS.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA17_O10_IMS.yml
+              parameters:
+                source: master
+## Call template yml for O11_PromotionalActuals
+      - job: LA18
+        displayName: 'LogicApps - O11_PromotionalActuals'
+        variables:
+          LA011PA: $[dependencies.ChangeSet.outputs['setupvariable.LA18']]
+        condition: and(succeeded(), eq(variables.LA011PA, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA18_O11_PromotionalActuals.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA18_O11_PromotionalActuals.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA18_O11_PromotionalActuals.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA18_O11_PromotionalActuals.yml
+              parameters:
+                source: master
+## Call template yml for O19_IOMP
+      - job: LA19
+        displayName: 'LogicApps - O19_IOMP'
+        variables:
+          LA019IOMP: $[dependencies.ChangeSet.outputs['setupvariable.LA19']]
+        condition: and(succeeded(), eq(variables.LA019IOMP, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA19_O19_IOMP.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA19_O19_IOMP.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA19_O19_IOMP.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA19_O19_IOMP.yml
+              parameters:
+                source: master
+## Call template yml for O20_GDS
+      - job: LA20
+        displayName: 'LogicApps - O20_GDS'
+        variables:
+          LA020GDS: $[dependencies.ChangeSet.outputs['setupvariable.LA20']]
+        condition: and(succeeded(), eq(variables.LA020GDS, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA20_O20_GDS.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA20_O20_GDS.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA20_O20_GDS.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA20_O20_GDS.yml
+              parameters:
+                source: master
+## Call template yml for O21_DeltaCalc
+      - job: LA21
+        displayName: 'LogicApps - O21_DeltaCalc'
+        variables:
+          LA021DC: $[dependencies.ChangeSet.outputs['setupvariable.LA21']]
+        condition: and(succeeded(), eq(variables.LA021DC, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA21_O21_DeltaCalc.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA21_O21_DeltaCalc.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA21_O21_DeltaCalc.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA21_O21_DeltaCalc.yml
+              parameters:
+                source: master
+## Call template yml for O22_PromoConditions_RebateAgreement
+
+      - job: LA22
+        displayName: 'LogicApps - O22_PromoConditions_RebateAgreement'
+        variables:
+          LA022PR: $[dependencies.ChangeSet.outputs['setupvariable.LA22']]
+        condition: and(succeeded(), eq(variables.LA022PR, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA22_O22_PromoConditions_RebateAgreement.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA22_O22_PromoConditions_RebateAgreement.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA22_O22_PromoConditions_RebateAgreement.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA22_O22_PromoConditions_RebateAgreement.yml
+              parameters:
+                source: master
+## Call template yml for O22_PromoConditions_SalesDeal
+
+      - job: LA23
+        displayName: 'LogicApps - O22_PromoConditions_SalesDeal'
+        variables:
+          LA023PS: $[dependencies.ChangeSet.outputs['setupvariable.LA23']]
+        condition: and(succeeded(), eq(variables.LA023PS, 'yes'))
+        dependsOn: ChangeSet
+        steps:
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+            - template: DevOps/LA23_O22_PromoConditions_SalesDeal.yml
+              parameters:
+                source: develop
+# Change branch to develop from develop and the source
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/SQA' )}}:
+            - template: DevOps/LA23_O22_PromoConditions_SalesDeal.yml
+              parameters:
+                source: SQA
+          
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/PPD' )}}:
+            - template: DevOps/LA23_O22_PromoConditions_SalesDeal.yml
+              parameters:
+                source: PPD
+          - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+            - template: DevOps/LA23_O22_PromoConditions_SalesDeal.yml
+              parameters:
+                source: master

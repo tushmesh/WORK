@@ -1,0 +1,96 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+ branches:
+   include:
+     - develop
+     - QA
+     - master
+ paths:
+   include:
+     - Synapse/*
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  - group: CICD_VARIABLES
+
+stages:
+- stage: CI
+  displayName: "Checkout"
+  jobs:
+   - job: "CI"
+     workspace:
+      clean: all
+     steps:
+      - checkout: self
+
+## Dev deployment
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+  - stage: CD
+    dependsOn: CI
+    displayName: 'Dev deployment'
+    jobs:
+      - job: CD
+        steps:
+          - task: Synapse workspace deployment@2
+            displayName: Generate workspace artifact templates for Dev
+            condition: true
+            continueOnError: false
+            inputs:
+              operation: 'validateDeploy'
+              ArtifactsFolder: '$(System.DefaultWorkingDirectory)/Synapse'
+              azureSubscription: '$(devservicename)'
+              ResourceGroupName: '$(rgrpdev)'
+              TargetWorkspaceName: '$(devworkspace)'
+              DeleteArtifactsNotInTemplate: false
+              DeployManagedPrivateEndpoints: false
+              FailOnMissingOverrides: false
+
+## QA deployment
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/QA' )}}:
+  - stage: CD
+    dependsOn: CI
+    displayName: 'QA deployment'
+    jobs:
+      - job: CD
+        steps:
+          - task: Synapse workspace deployment@2
+            displayName: Generate workspace artifact templates for QA
+            condition: true
+            continueOnError: false
+            inputs:
+              operation: 'validateDeploy'
+              ArtifactsFolder: '$(System.DefaultWorkingDirectory)/Synapse'
+              azureSubscription: '$(qaservicename)'
+              ResourceGroupName: '$(rgrpqa)'
+              TargetWorkspaceName: '$(qaworkspace)'
+              DeleteArtifactsNotInTemplate: false
+              DeployManagedPrivateEndpoints: false
+              FailOnMissingOverrides: false
+
+## Prod deployment
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/master' )}}:
+  - stage: CD
+    dependsOn: CI
+    displayName: 'Prod deployment'
+    jobs:
+      - job: CD
+        steps:
+          - task: Synapse workspace deployment@2
+            displayName: Generate workspace artifact templates for Prod
+            condition: true
+            continueOnError: false
+            inputs:
+              operation: 'validateDeploy'
+              ArtifactsFolder: '$(System.DefaultWorkingDirectory)/Synapse'
+              azureSubscription: '$(prodservicename)'
+              ResourceGroupName: '$(rgrpprod)'
+              TargetWorkspaceName: '$(prodworkspace)'
+              DeleteArtifactsNotInTemplate: false
+              DeployManagedPrivateEndpoints: false
+              FailOnMissingOverrides: false

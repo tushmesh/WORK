@@ -1,0 +1,19 @@
+steps:
+  - task: SonarQubePrepare@4
+    continueOnError: false
+    displayName: "SonarQube EE: preparing for execution ..."
+    inputs:
+      SonarQube: 'SonarQube EE'
+      scannerMode: 'CLI'
+      configMode: 'file'
+
+  - task: SonarQubeAnalyze@4
+    continueOnError: false
+    displayName: "SonarQube EE: executing analisys"
+
+  - task: SonarQubePublish@4
+    continueOnError: false
+    displayName: "SonarQube EE: publishing report"
+    inputs:
+      pollingTimeoutSec: '300'
+

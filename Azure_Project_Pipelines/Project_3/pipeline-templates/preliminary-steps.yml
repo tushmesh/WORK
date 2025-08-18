@@ -1,0 +1,117 @@
+parameters:
+  - name: cicdChain
+    type: string
+  - name: infoPath
+    type: string
+  - name: env
+    type: string
+
+steps:
+  - task: CmdLine@2
+    displayName: "Preliminary Steps"
+    continueOnError: false
+    inputs:
+      script: |
+        set -euo pipefail
+        echo -e "\e[1mEnsuring unix-like source files termination\e[0m"
+        echo "first $(System.PullRequest.TargetBranch)"
+        echo "Second $(System.PullRequest.SourceBranch)"
+        find scripts -type f -exec chmod +x {} \;
+        find $(Build.SourcesDirectory)/sources/tim-actpm-integration-OI-discount -type f -print0 | xargs -0 dos2unix
+        echo -e "\e[1mInitializing python virtual environment\e[0m"
+        python3.9 -m venv .localPy3Env
+        source .localPy3Env/bin/activate
+        python -m pip install --upgrade pip
+        python -m pip install -r scripts/python/requirements.txt
+        echo -e "\e[1mReading informations from ${{parameters.infoPath}}\e[0m"
+        microservice=$(scripts/python/shyaml get-value "microservice" < "${{parameters.infoPath}}")
+        currentRelease=$(scripts/python/shyaml get-value "currentRelease" < "${{parameters.infoPath}}")
+        patternVersion=$(scripts/python/shyaml get-value "pattern-version" < "${{parameters.infoPath}}")
+        repo=$(scripts/python/shyaml get-value "git-repo" < "${{parameters.infoPath}}")
+        azureSubscription=$(scripts/python/shyaml get-value "azureSubscription" < "${{parameters.infoPath}}")
+        azureSubscriptionprd=$(scripts/python/shyaml get-value "azureSubscriptionprd" < "${{parameters.infoPath}}")
+        databricksWspUrl=$(scripts/python/shyaml get-value "${{parameters.env}}.databricks-wsp-url" < "${{parameters.infoPath}}")
+        databricksWspk=$(scripts/python/shyaml get-value "${{parameters.env}}.databricks-workspace" < "${{parameters.infoPath}}")
+        dbksWorkspaceFolder=$(scripts/python/shyaml get-value "${{parameters.env}}.dbks-workspaceFolder" < "${{parameters.infoPath}}")
+        dbksWorkspaceFolder_microservice=$(scripts/python/shyaml get-value "${{parameters.env}}.dbks-workspaceFolder_microservice" < "${{parameters.infoPath}}")
+        site=$(scripts/python/shyaml get-value "${{parameters.env}}.site" < "${{parameters.infoPath}}")
+        resgroup=$(scripts/python/shyaml get-value "${{parameters.env}}.resourceGroup" < "${{parameters.infoPath}}")
+        if [[ "${{parameters.env}}" == "DEV" ]]; then
+           packagePrefix=$(scripts/python/shyaml get-value "package-prefix" < "${{parameters.infoPath}}")
+           feed=$(scripts/python/shyaml get-value "feed" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=packagePrefix]${packagePrefix}"
+           echo "##vso[task.setvariable variable=feed]${feed}"
+        fi
+        if [[ "${{parameters.env}}" == "QA" ]]; then
+           packagePrefix=$(scripts/python/shyaml get-value "package-prefix" < "${{parameters.infoPath}}")
+           feed=$(scripts/python/shyaml get-value "feed" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=packagePrefix]${packagePrefix}"
+           echo "##vso[task.setvariable variable=feed]${feed}"
+        fi
+        if [[ "${{parameters.env}}" == "PROD" ]]; then
+           packagePrefix=$(scripts/python/shyaml get-value "package-prefix" < "${{parameters.infoPath}}")
+           feed=$(scripts/python/shyaml get-value "feed" < "${{parameters.infoPath}}")
+           echo "##vso[task.setvariable variable=packagePrefix]${packagePrefix}"
+           echo "##vso[task.setvariable variable=feed]${feed}"
+        fi  
+        echo "##vso[task.setvariable variable=microservice]${microservice}"
+        echo "##vso[task.setvariable variable=currentRelease]${currentRelease}"
+        echo "##vso[task.setvariable variable=patternVersion]${patternVersion}"
+        echo "##vso[task.setvariable variable=repo]${repo}"
+        echo "##vso[task.setvariable variable=databricksWspUrl]${databricksWspUrl}"
+        echo "##vso[task.setvariable variable=databricksWspk]${databricksWspk}"
+        echo "##vso[task.setvariable variable=site]${site}"
+        echo "##vso[task.setvariable variable=azureSubscription]${azureSubscription}"
+        echo "##vso[task.setvariable variable=azureSubscriptionprd]${azureSubscriptionprd}"
+        echo "##vso[task.setvariable variable=resgroup]${resgroup}"
+        echo "##vso[task.setvariable variable=dbksWorkspaceFolder]${dbksWorkspaceFolder}"
+        echo "##vso[task.setvariable variable=dbksWorkspaceFolder_microservice]${dbksWorkspaceFolder_microservice}"
+        deactivate
+
+  - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+    - template: new-version.yml
+      parameters:
+        env: ${{parameters.env}}
+
+    - task: CmdLine@2
+      displayName: "Export new version number"
+      continueOnError: false
+      inputs:
+        script: |
+          set -euo pipefail
+          currVer=$(cat taglist.lst)
+          new_version=$(cat .new_version)
+          echo "##vso[task.setvariable variable=newVersion]${new_version}"
+          echo "##vso[task.setvariable variable=currVer]${currVer}"
+
+  - ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/release') }}:
+    - template: new-version.yml
+      parameters:
+        env: ${{parameters.env}}
+
+    - task: CmdLine@2
+      displayName: "Export new version number"
+      continueOnError: false
+      inputs:
+        script: |
+          set -euo pipefail
+          currVer=$(cat taglist.lst)
+          new_version=$(cat .new_version)
+          echo "##vso[task.setvariable variable=newVersion]${new_version}"
+          echo "##vso[task.setvariable variable=currVer]${currVer}"
+
+  - ${{if eq( variables['Build.SourceBranch'], 'refs/heads/main' )}}:
+    - template: new-version.yml
+      parameters:
+        env: ${{parameters.env}}
+        
+    - task: CmdLine@2
+      displayName: "Export new version number"
+      continueOnError: false
+      inputs:
+        script: |
+            set -euo pipefail
+            currVer=$(cat taglist.lst)
+            new_version=$(cat .new_version)
+            echo "##vso[task.setvariable variable=newVersion]${new_version}"
+            echo "##vso[task.setvariable variable=currVer]${currVer}"

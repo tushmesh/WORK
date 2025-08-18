@@ -1,0 +1,4 @@
+pyyaml
+xml-python
+colorama
+requests

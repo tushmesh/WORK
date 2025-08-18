@@ -1,0 +1,192 @@
+parameters:
+  - name: notebooksFolderPath
+    type: string
+  - name: notebooksFilePathmain
+    type: string
+  - name: version
+    type: string
+  - name: env
+    type: string
+
+steps:
+
+# Dev Deploy
+  - ${{ if eq(parameters.env, 'Dev') }}:
+
+    - task: AzureKeyVault@1
+      displayName: 'Azure Dev KeyVault'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        KeyVaultName: 'iactpm-payment-kv-dev'
+        SecretsFilter: 'PAT-DATABRICKS'
+
+
+    - task: CmdLine@2
+      continueOnError: false
+      displayName: "Initializing python virtual environment"
+      inputs:
+        script: |
+            set -euo pipefail
+            python3.9 -m venv .localPy3Env
+            source .localPy3Env/bin/activate
+            python -m pip install --upgrade pip
+            
+    - task: configuredatabricks@0
+      displayName: "Configuring Databricks workspace"
+      continueOnError: false
+      inputs:
+        url: '$(databricksWspUrl)'
+        #token: '$(DATABRICKS_PAT)'
+        token: '$(PAT-DATABRICKS)'
+
+  - ${{ if eq(parameters.env, 'Dev') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFolderPath}}'
+        workspaceFolder: "$(dbksWorkspaceFolder)"
+
+  - ${{ if eq(parameters.env, 'Dev') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFilePathmain}}'
+        workspaceFolder: "$(dbksWorkspaceFolder_microservice)"
+
+# QA Deploy
+  - ${{ if eq(parameters.env, 'QA') }}:
+
+
+    - task: AzureKeyVault@1
+      displayName: 'Azure Dev KeyVault'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        KeyVaultName: 'iactpm-payment-kv-qa'
+
+
+    - task: CmdLine@2
+      continueOnError: false
+      displayName: "Initializing python virtual environment"
+      inputs:
+        script: |
+            set -euo pipefail
+            python3.9 -m venv .localPy3Env
+            source .localPy3Env/bin/activate
+            python -m pip install --upgrade pip
+            
+    - task: configuredatabricks@0
+      displayName: "Configuring Databricks workspace"
+      continueOnError: false
+      inputs:
+        url: '$(databricksWspUrl)'
+        token: '$(PAT-DATABRICKS)'
+
+  - ${{ if eq(parameters.env, 'QA') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFolderPath}}'
+        workspaceFolder: "$(dbksWorkspaceFolder)"
+
+  - ${{ if eq(parameters.env, 'QA') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFilePathmain}}'
+        workspaceFolder: "$(dbksWorkspaceFolder_microservice)"
+        
+        
+# PROD Deploy
+  - ${{ if eq(parameters.env, 'PROD') }}:
+
+
+    - task: AzureKeyVault@1
+      displayName: 'Azure Dev KeyVault'
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        KeyVaultName: 'iactpm-payment-kv-prod'
+
+
+    - task: CmdLine@2
+      continueOnError: false
+      displayName: "Initializing python virtual environment"
+      inputs:
+        script: |
+            set -euo pipefail
+            python3.9 -m venv .localPy3Env
+            source .localPy3Env/bin/activate
+            python -m pip install --upgrade pip
+            
+    - task: configuredatabricks@0
+      displayName: "Configuring Databricks workspace"
+      continueOnError: false
+      inputs:
+        url: '$(databricksWspUrl)'
+        token: '$(PAT-DATABRICKS)'
+
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFolderPath}}'
+        workspaceFolder: "$(dbksWorkspaceFolder)"
+
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: deploynotebooks@0
+      displayName: "Deploying Databricks workspace"
+      continueOnError: false
+      inputs:
+        notebooksFolderPath: '${{parameters.notebooksFilePathmain}}'
+        workspaceFolder: "$(dbksWorkspaceFolder_microservice)"
+        
+## Tagging
+      
+  - ${{ if eq(parameters.env, 'Dev') }}:
+    - task: AzureCLI@2
+      displayName: 'Tagging Databricks on Azure Cloud'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-Dev-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) \
+            --tags version=${{parameters.version}}
+
+  - ${{ if eq(parameters.env, 'QA') }}:
+    - task: AzureCLI@2
+      displayName: 'Tagging Databricks on Azure Cloud'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPM-QA-02'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+            --resource-id /subscriptions/$(azureSubscription)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) \
+            --tags version=${{parameters.version}}
+
+  - ${{ if eq(parameters.env, 'PROD') }}:
+    - task: AzureCLI@2
+      displayName: 'Tagging Databricks on Azure Cloud'
+      continueOnError: false
+      inputs:
+        azureSubscription: 'SC-to-AZ-RG-iACTPMPayments-Prod-01'
+        scriptLocation: 'inlineScript'
+        scriptType: 'bash'
+        inlineScript: |
+            set -euovx pipefail
+            echo -e "\e[1mWriting resource tag on Azure\e[0m"
+            az tag create \
+            --resource-id /subscriptions/$(azureSubscriptionprd)/resourceGroups/$(resgroup)/providers/Microsoft.Databricks/workspaces/$(databricksWspk) \
+            --tags version=${{parameters.version}}

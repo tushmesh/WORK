@@ -1,0 +1,160 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+    - develop
+    - release/*
+    - releasefix/*
+    - hotfix/*
+  paths:
+    include:
+    - '*'
+  
+    
+pool: OI-Discount pool
+
+
+variables:
+  - group: CICD_VARIABLES
+
+stages:
+- stage: CI
+  displayName: "CI"
+  jobs:
+    - job: "CI"
+      workspace:
+        clean: all
+      steps:
+        - template: pipeline-templates/preliminary-steps.yml
+          parameters:
+            cicdChain: 'CI'
+            infoPath: 'info.yaml'
+            env: 'DEV'
+
+        - template: pipeline-templates/unit-test.yml
+          parameters:
+            app: 'Databricks'
+
+        - template: pipeline-templates/sonarqube.yml
+
+- ${{if eq( variables['Build.SourceBranch'], 'refs/heads/develop' )}}:
+  - stage: CD
+    dependsOn: CI
+    jobs:
+    - deployment: Approval
+      displayName: 'Awaiting for Approval'
+      environment: Development
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: pipeline-templates/preliminary-steps.yml
+                parameters:
+                  cicdChain: 'CI'
+                  infoPath: 'info.yaml'
+                  env: 'DEV'
+                  
+              - template: pipeline-templates/archive-artifact.yml
+              - template: pipeline-templates/deploy-databricks.yml
+                parameters:
+                  env: 'DEV'
+                  version: $(newVersion)
+                  notebooksFolderPath: '$(Build.SourcesDirectory)/sources/$(microservice)/Databricks/Functions'
+                  notebooksFilePathmain: '$(Build.SourcesDirectory)/$(packagePrefix)'
+
+              - template: pipeline-templates/deploy-function-app.yml
+                parameters:
+                  env: 'DEV'
+                  version: $(newVersion)
+                  packagePath: '$(Build.SourcesDirectory)/artifact/$(packagePrefix)-functionapp.zip'
+               
+              - template: pipeline-templates/tag-repository.yml
+                parameters:
+                  version: $(newVersion)
+          
+## QA fix Deployment          
+- ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/release') }}:
+  - stage: CD
+    dependsOn: CI
+    jobs:
+      - deployment: Approval
+        displayName: 'Awaiting for Approval'
+        environment: QA
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: pipeline-templates/preliminary-steps.yml
+                  parameters:
+                    cicdChain: 'CI'
+                    infoPath: 'info.yaml'
+                    env: 'QA'
+                    
+                - template: pipeline-templates/archive-artifact.yml
+                - template: pipeline-templates/deploy-databricks.yml
+                  parameters:
+                    env: 'QA'
+                    version: $(newVersion)
+                    notebooksFolderPath: '$(Build.SourcesDirectory)/sources/$(microservice)/Databricks/Functions'
+                    notebooksFilePathmain: '$(Build.SourcesDirectory)/$(packagePrefix)'
+
+                - template: pipeline-templates/deploy-function-app.yml
+                  parameters:
+                    env: 'QA'
+                    version: $(newVersion)
+                    packagePath: '$(Build.SourcesDirectory)/artifact/$(packagePrefix)-functionapp.zip'
+
+                #- template: pipeline-templates/merge-repository.yml
+                  #parameters:
+                    #environment: 'QA'
+                    #tagnumberRef: 'NULL'
+                    #dstBranchRef: 'NULL'
+                    
+                - template: pipeline-templates/tag-repository.yml
+                  parameters:
+                    version: $(newVersion)
+                  
+- ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/hotfix/') }}:  
+  - stage: CD
+    dependsOn: CI
+    jobs:
+      - deployment: Approval
+        displayName: 'Awaiting for Approval'
+        environment: PROD
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: pipeline-templates/preliminary-steps.yml
+                  parameters:
+                    cicdChain: 'CI'
+                    infoPath: 'info.yaml'
+                    env: 'PROD'
+                    
+                - template: pipeline-templates/archive-artifact.yml
+                - template: pipeline-templates/deploy-databricks.yml
+                  parameters:
+                    env: 'PROD'
+                    version: $(newVersion)
+                    notebooksFolderPath: '$(Build.SourcesDirectory)/sources/$(microservice)/Databricks/Functions'
+                    notebooksFilePathmain: '$(Build.SourcesDirectory)/$(packagePrefix)'
+
+                - template: pipeline-templates/deploy-function-app.yml
+                  parameters:
+                    env: 'PROD'
+                    version: $(newVersion)
+                    packagePath: '$(Build.SourcesDirectory)/artifact/$(packagePrefix)-functionapp.zip'
+                    
+                - template: pipeline-templates/merge-repository.yml
+                  parameters:
+                    environment: 'PROD'
+                    tagnumberRef: 'NULL'
+                    dstBranchRef: 'main'
+                    
+                - template: pipeline-templates/tag-repository.yml
+                  parameters:
+                    version: $(newVersion)
