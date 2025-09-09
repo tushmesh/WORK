@@ -16,7 +16,7 @@ scope = 'api://932693b6-709a-4278-b4a0-19aec44f92a6/.default/Directory.Read.All'
 state = '12345'
 code_challenge_method = 'S256'
 grant_type = 'authorization_code'
-client_secret = '12Mu_8Q~hvJzc5zi3b8xu3xySnqTGfEclHUfRarb1e'
+client_secret = '<<ADD SECRET>>'
 
 # HTML template
 html_template = """
