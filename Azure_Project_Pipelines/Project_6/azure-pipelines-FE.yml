@@ -18,7 +18,7 @@ parameters:
 
 steps:
   - script: |
-      git clone https://$(System.AccessToken)@dev.azure.com/dsphub-ferrero/1198_AI_Sales_Coach/_git/${{ parameters.reponame }} ${{ parameters.reponame }}
+      git clone https://$(System.AccessToken)@dev.azure.com/XXX/_git/${{ parameters.reponame }} ${{ parameters.reponame }}
       cd ${{ parameters.reponame }}
       git checkout feature/${{ parameters.branchname }}
       git fetch --all --tags
