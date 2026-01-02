@@ -1,0 +1,156 @@
+##########################################
+########## Trigger main Pipeline #########
+##########################################
+trigger:
+  branches:
+    include:
+      #- qlt
+      - prod
+  paths:
+      include:
+       - '**'
+    # parameters:
+    #   - name: 'all_agents'
+    #     displayName: 'Enter "all" or name of the agent to deploy agent/s Ex: orchestrator all in lower case'
+    #     type: string
+    #     default: ''  # User can provide this at pipeline execution time
+variables:
+  - group: SALESCOACH_FE
+  - group: SALESCOACH_AI
+  - group: SALESCOACH_FUNAPP
+  - group: SALESCOACH_SQL
+
+pool: 1198_SELF_HOSTED_AGENT
+
+resources:
+  repositories:
+    - repository: 1198_AI_Sales_Coach_AKS_AI
+      type: git
+      name: 1198_AI_Sales_Coach_AKS_AI
+      ref: ${{ variables['Build.SourceBranch'] }}
+      trigger:
+        branches:
+          include:
+            - feature/auto_deploy_devops
+            #- dev
+            #- qlt
+            #- main
+        paths:
+          include:
+            - '**'
+
+    - repository: 1198_AI_Sales_Coach_AKS_FE
+      type: git
+      name: 1198_AI_Sales_Coach_AKS_FE
+      ref: ${{ variables['Build.SourceBranch'] }}
+      trigger:
+        branches:
+          include:
+            - feature/auto_deploy_devops
+            - release
+            # - dev
+            # - qlt
+            # - main
+        paths:
+            include:
+            - '**'
+            
+    - repository: 1198_AI_Sales_Coach_FUNC_APP
+      type: git
+      name: 1198_AI_Sales_Coach_FUNC_APP
+      ref: ${{ variables['Build.SourceBranch'] }}
+      trigger:
+        branches:
+          include:
+            - feature/auto_deploy_devops
+            # - dev
+            # - qlt
+            # - main
+        paths:
+            include:
+            - '**'
+
+stages:
+    - stage: detect
+      jobs:
+      - job: detect_changes
+        displayName: 'Detect Changed Components'
+        steps:
+        - checkout: self
+          fetchDepth: 2
+          persistCredentials: true
+
+    ### Detect Triggering Repository
+        - task: Bash@3
+          displayName: 'Checkout and Analyze Triggering Repository'
+          inputs:
+                targetType: 'inline'
+                script: |
+                  # Clone the triggering repository
+                  REPO_NAME="$(Build.Repository.Name)"
+                  BRANCH_NAME="$(Build.SourceBranchName)"
+                  TOKEN="$(System.AccessToken)"
+
+                  # Analyze changes
+                  BUILD_FRONTEND=false
+                  BUILD_AI=false
+                  BUILD_AZUREFUNCTION=false
+
+                  case "$REPO_NAME" in
+                      "1198_AI_Sales_Coach_AKS_FE") BUILD_FRONTEND=true ;;
+                      "1198_AI_Sales_Coach_AKS_AI") BUILD_AI=true ;;
+                      "1198_AI_Sales_Coach_FUNC_APP") BUILD_AZUREFUNCTION=true ;;
+                  esac
+                  
+                  echo "##vso[task.setvariable variable=buildFrontend;isOutput=true]$BUILD_FRONTEND"
+                  echo "##vso[task.setvariable variable=buildAI;isOutput=true]$BUILD_AI"
+                  echo "##vso[task.setvariable variable=buildAzureFunction;isOutput=true]$BUILD_AZUREFUNCTION"
+                  echo "##vso[task.setvariable variable=reponame;isOutput=true]$REPO_NAME"
+                  echo "##vso[task.setvariable variable=branchname;isOutput=true]$BRANCH_NAME"
+          name: setVars
+
+#### Frontend
+    - stage: AKS_FE
+      dependsOn: detect
+      condition: and(succeeded(), eq(dependencies.detect.outputs['detect_changes.setVars.buildFrontend'], 'true'))
+      variables:
+        branchname: $[ stageDependencies.detect.detect_changes.outputs['setVars.branchname'] ]
+        reponame: $[ stageDependencies.detect.detect_changes.outputs['setVars.reponame'] ]
+      jobs:
+        - job: Frontend
+          steps:
+            - template: azure-pipelines-FE.yml
+              parameters:
+                branchname: ${{ variables['Build.SourceBranchName'] }}
+                reponame: $(reponame)
+                buildid: $(Build.BuildId)
+
+    - stage: AKS_AI
+      dependsOn: detect
+      condition: and(succeeded(), eq(dependencies.detect.outputs['detect_changes.setVars.buildAI'], 'true'))
+      variables:
+        branchname: $[ stageDependencies.detect.detect_changes.outputs['setVars.branchname'] ]
+        reponame: $[ stageDependencies.detect.detect_changes.outputs['setVars.reponame'] ]
+      jobs:
+        - job: AKS_AI
+          steps:
+            - template: azure-pipelines-AI.yml
+              parameters:
+                branchname: ${{ variables['Build.SourceBranchName'] }}
+                reponame: $(reponame)
+                buildid: $(Build.BuildId)
+
+    - stage: AKS_FUN_APP
+      dependsOn: detect
+      condition: and(succeeded(), eq(dependencies.detect.outputs['detect_changes.setVars.buildAzureFunction'], 'true'))
+      variables:
+        branchname: $[ stageDependencies.detect.detect_changes.outputs['setVars.branchname'] ]
+        reponame: $[ stageDependencies.detect.detect_changes.outputs['setVars.reponame'] ]
+      jobs:
+        - job: AKS_FUN_APP
+          steps:
+            - template: azure-pipelines-AI.yml
+              parameters:
+                branchname: ${{ variables['Build.SourceBranchName'] }}
+                reponame: $(reponame)
+                buildid: $(Build.BuildId)

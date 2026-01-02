@@ -1,0 +1,27 @@
+# docker.yml
+parameters:
+- name: agent
+  type: string
+- name: dockerfile
+  type: string
+- name: containerRegistry
+  type: string
+- name: tagname
+  type: string
+
+steps:
+    - script: |
+        echo "${{ parameters.agent }}"
+        echo "${{ parameters.dockerfile }}"
+        echo "${{ parameters.containerRegistry }}"
+        echo "${{ parameters.tagname }}"
+# - task: Docker@2
+  # displayName: build: ${{ parameters.agent }}
+  # condition: eq(variables['${{ parameters.agent }}'], 'true')
+  # inputs:
+    # containerRegistry: $(containerRegistry)
+    # repository: ${{ parameters.agent }}
+    # command: buildAndPush
+    # dockerfile: ${{ parameters.dockerfile }}
+    # buildContext: '$(Build.SourcesDirectory)'
+    # tags: '${{ parameters.tagname }}'

@@ -1,0 +1,107 @@
+##########################################
+########## Deploy AI to the AKS ##########
+##########################################
+
+parameters:
+- name: branchname
+  type: string
+- name: reponame
+  type: string
+- name: buildid
+  type: string
+
+
+steps:
+     
+  - script: |
+      git clone https://$(System.AccessToken)@dev.azure.com/dsphub-ferrero/1198_AI_Sales_Coach/_git/${{ parameters.reponame }} ${{ parameters.reponame }}
+      cd ${{ parameters.reponame }}
+      git checkout feature/${{ parameters.branchname }}
+      CHANGED_FILES=$(git diff --name-only HEAD HEAD~1)
+      echo $CHANGED_FILES
+      cp ../version_bump.py .
+
+      for FOLDER in orchestrator transfer_order gap promotion sqlagent; do
+           if echo "$CHANGED_FILES" | grep -q "^agents/$FOLDER/"; then
+             echo "##vso[task.setvariable variable=$FOLDER]true"
+             echo "Detected changes in agent: $FOLDER"
+           else
+             echo "##vso[task.setvariable variable=$FOLDER]false"
+           fi
+      done
+    displayName: 'Detect changes in agents folders'
+    name: folder_changed
+
+  - ${{ if eq(parameters.branchname, 'auto_deploy_devops') }}:
+    - ${{ if eq(variables['orchestrator'], 'true') }}:
+      - template: docker.yml
+        parameters:
+            agent: orchestrator
+            dockerfile: agents/orchestrator/Dockerfile
+            containerRegistry: $(containerRegistry_dev)
+
+
+#################################
+
+  # - ${{ if eq(parameters.branchname, 'auto_deploy_devops') }}:
+      # - template: docker.yml
+        # condition: eq(variables['orchestrator'], 'true')
+        # parameters:
+          # agent: orchestrator
+          # dockerfile: agents/orchestrator/Dockerfile
+          # containerRegistry: $(containerRegistry_dev)         
+      # - template: docker.yml
+        # condition: eq(variables['transfer_order'], 'true')
+        # parameters:
+          # agent: transfer_order
+          # dockerfile: agents/transfer_order/Dockerfile
+          # containerRegistry: $(containerRegistry_dev)
+      # - template: docker.yml
+        # condition: eq(variables['gap'], 'true')
+        # parameters:
+          # agent: gap
+          # dockerfile: agents/gap/Dockerfile
+          # containerRegistry: $(containerRegistry_dev)
+      # - template: docker.yml
+        # condition: eq(variables['sqlagent'], 'true')
+        # parameters:
+          # agent: sqlagent
+          # dockerfile: agents/sqlagent/Dockerfile
+          # containerRegistry: $(containerRegistry_dev)
+# ## orchestrator
+      # # - task: Docker@2
+        # # condition: or(eq(variables['orchestrator'], 'true'), eq(lower('${{ parameters.all_agents }}'), 'all'), eq(lower('${{ parameters.all_agents }}'), 'orchestrator'))
+        # # displayName: 'Build: orchestrator'
+        # # inputs:
+            # # containerRegistry: ${{ variables.reg_name }}           ### CHANGE THIS
+            # # repository: 'orchestrator'
+            # # command: buildAndPush
+            # # Dockerfile: 'agents/orchestrator/Dockerfile'
+            # # buildContext: '$(Build.SourcesDirectory)'
+            # # tags: '${{ variables.envName }}-$(Build.BuildId)'
+
+
+      # - script: |
+          # echo "I am inside if "
+        # displayName: Build orchestrator
+        
+      # - script: |
+          # echo "I am in orchestrator"
+        # displayName: Build orchestrator
+        # condition: eq(variables['orchestrator'], 'true')
+      
+      # - script: |
+          # echo "I am in trasnfer"
+        # displayName: Build transfer_order
+        # condition: eq(variables['transfer_order'], 'true')
+
+### 
+  # - task: CmdLine@2
+    # displayName: 'Bump Version and Create Tag'
+    # inputs:
+        # script: |
+            # python ${{ parameters.reponame }}/version_bump.py \
+                # "${{ parameters.reponame }}" \
+                # "${{ parameters.branchname }}" \
+                # "$(System.AccessToken)" \
+                # "$(Build.SourceVersionMessage)"

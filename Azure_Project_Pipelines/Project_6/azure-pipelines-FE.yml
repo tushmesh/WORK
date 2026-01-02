@@ -1,0 +1,226 @@
+##########################################
+########## Deploy FE to the AKS ##########
+##########################################
+
+parameters:
+- name: branchname
+  type: string
+- name: reponame
+  type: string
+- name: buildid
+  type: string
+  
+
+##########################################
+########## develop Branch Build ##########
+##########################################
+
+
+steps:
+  - script: |
+      git clone https://$(System.AccessToken)@dev.azure.com/dsphub-ferrero/1198_AI_Sales_Coach/_git/${{ parameters.reponame }} ${{ parameters.reponame }}
+      cd ${{ parameters.reponame }}
+      git checkout feature/${{ parameters.branchname }}
+      git fetch --all --tags
+      tagname=$(git tag --sort=-v:refname | head -n 1)
+      if [ -z "$tagname" ]; then
+          tagname="1.0.0"
+      fi
+      echo "##vso[task.setvariable variable=tagname]$tagname"
+      cp ../version_bump.py .
+
+
+  - ${{ if eq(parameters.branchname, 'auto_deploy_devops') }}:
+      - template: docker.yml
+        parameters:
+          agent: frontend
+          dockerfile: Dockerfile
+          containerRegistry: $(containerRegistry_dev)
+          tagname: DEV-${{ parameters.buildid }}
+
+  # - ${{ if eq(parameters.branchname, 'qlt') }}:
+      # - template: docker.yml
+        # parameters:
+          # agent: frontend
+          # dockerfile: Dockerfile
+          # containerRegistry: $(containerRegistry_qlt)
+          # tagname: QLT-$(tagname)
+
+  # - ${{ if eq(parameters.branchname, 'prod') }}:
+      # - template: docker.yml
+        # parameters:
+          # agent: frontend
+          # dockerfile: Dockerfile
+          # containerRegistry: $(containerRegistry_prod)
+          #tagname: PROD-$(tagname)
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
+
+# ## Build an Image
+#     # - task: Docker@2
+#       # displayName: 'Build Docker Image'
+#       # inputs:
+#         # containerRegistry: '$(ACR_SERVICE_CONN_DEV)'
+#         # repository: '$(ACR_REPO_DEV)'
+#         # command: 'buildAndPush'
+#         # Dockerfile: 'Dockerfile'
+#         # tags: DEV-$tagname            
+#         # buildContext: $(Build.SourcesDirectory)
+#   - ${{ if eq(parameters.branchname, 'auto_deploy_devops') }}:
+#       - bash: |
+#             set -e
+#             tagname=${{ parameters.buildid }}
+#             cd ${{ parameters.reponame }}/K8s
+#             changed_apps=()
+#             # Get the list of original files first
+#             original_files=(*.yml)
+
+#             for src in *.yml; do
+#               [ -e "$src" ] || continue
+#               base="$(basename "$src")"
+#               dest="updated_$base"
+#               echo "Processing $src -> $dest"
+#               sed \
+#                 -e 's/__APP_NAME__/$(APP_NAME)/g' \
+#                 -e 's|__ACR_URI__|$(ACR_DEV_URI)|g' \
+#                 -e "s/__TAG_NAME__/$tagname/g" \
+#                 "$src" > "$dest"
+#             done
+#         displayName: 'Update Kubernetes manifest'
+
+      
+    # - task: KubernetesManifest@1
+    #   inputs:
+    #     action: 'deploy'
+    #     namespace: 'default'
+    #     manifests: |
+    #       ${{ parameters.reponame }}/K8s/deployment.yml
+    #       ${{ parameters.reponame }}/K8s/service.yml
+    #     containers: '$(ACR_DEV_URI)/$(ACR_REPO_DEV):DEV-$tagname'
+
+# ##########################################
+# ########## release Branch Build ##########
+# ##########################################
+# - stage: 'Release'
+#   condition: eq(lower('${{ parameters.branchname }}'), 'qlt')
+#   displayName: Build and push for RELEASE
+#   jobs:
+#   - deployment: Approval
+#     displayName: 'Awaiting for Approval'
+#     environment: RELEASE
+#   - job: Build
+#     displayName: Build RELEASE
+#     steps:
+
+# ## Build an Image
+# ## Build an Image
+#     - task: Docker@2
+#       displayName: 'Build Docker Image'
+#       inputs:
+#         containerRegistry: '$(ACR_SERVICE_CONN_QLT)'
+#         repository: '$(ACR_REPO_QLT)'
+#         command: 'buildAndPush'
+#         Dockerfile: 'Dockerfile'
+#         tags: QLT-$(Build.BuildId)
+#         buildContext: $(Build.SourcesDirectory)
+
+#     - bash: |
+#         set -e
+#         sed \
+#           -i "s#__APP_NAME__#$(APP_NAME)#g" \
+#           -i "s#__ACR_URI__#$(ACR_DEV_URI)#g" \
+#           -i "s#__TAG_NAME__#$(TAG_NAME)#g" \
+#           $(Build.SourcesDirectory)/K8s/*.yml
+#       displayName: 'Render Kubernetes manifest'
+      
+#     - task: KubernetesManifest@1
+#       inputs:
+#         action: 'deploy'
+#         namespace: 'default'
+#         manifests: |
+#           $(Build.SourcesDirectory)/K8s/${{ parameters.branch }}/deployment.yml
+#           $(Build.SourcesDirectory)/K8s/${{ parameters.branch }}/service.yml
+#         containers: '$(ACR_QLT_URI)/$(ACR_REPO_QLT):QLT-$(Build.BuildId)'
+
+# # #### Tag Repository
+# #     - task: CmdLine@2
+# #       condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/release'))
+# #       continueOnError: false
+# #       env:
+# #             SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+# #       displayName: "Tag Repository"
+# #       inputs:
+# #           script: |
+# #             commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+# #             commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+# #             git config user.email "$commitAuthorEmail"
+# #             git config user.name "$commitAuthorName"
+# #             git config http.extraheader "AUTHORIZATION: bearer $(System.AccessToken)"
+# #             git tag "release-$(Build.BuildId)"
+# #             git push origin  "release-$(Build.BuildId)"
+
+# ##########################################
+# ########## main Branch Build ##########
+# ##########################################
+# - stage: 'Prod'
+#   condition: eq(lower('${{ parameters.branchname }}'), 'main')
+#   displayName: Build and push for PROD
+#   jobs:
+#   - deployment: Approval
+#     displayName: 'Awaiting for Approval'
+#     environment: PROD
+#   - job: Build
+#     displayName: Build PROD
+#     steps:
+
+# ## Build an Image
+#  ## Build an Image
+#     - task: Docker@2
+#       displayName: 'Build Docker Image'
+#       inputs:
+#         containerRegistry: '$(ACR_SERVICE_CONN_PROD)'
+#         repository: '$(ACR_REPO_PROD)'
+#         command: 'buildAndPush'
+#         Dockerfile: 'Dockerfile'
+#         tags: PROD-$(Build.BuildId)
+#         buildContext: $(Build.SourcesDirectory)
+
+#     - task: KubernetesManifest@1
+#       inputs:
+#         action: 'deploy'
+#         namespace: 'default'
+#         manifests: |
+#           $(Build.SourcesDirectory)/K8s/${{ parameters.branch }}/deployment.yml
+#           $(Build.SourcesDirectory)/K8s/${{ parameters.branch }}/service.yml
+#         containers: '$(ACR_PORD_URI)/$(ACR_REPO_PROD):PROD-$(Build.BuildId)'
+#         #
+# # #### Tag Repository
+# #     - task: CmdLine@2
+# #       continueOnError: false
+# #       env:
+# #             SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+# #       displayName: "Tag Repository"
+# #       inputs:
+# #           script: |
+# #             commitAuthorName=$(git log --format='%an' $(Build.SourceVersion)^!)
+# #             commitAuthorEmail=$(git log --format='%ae' $(Build.SourceVersion)^!)
+# #             git config user.email "$commitAuthorEmail"
+# #             git config user.name "$commitAuthorName"
+# #             git config http.extraheader "AUTHORIZATION: bearer $(System.AccessToken)"
+# #             git tag "prod-$(Build.BuildId)"
+# #             git push origin  "prod-$(Build.BuildId)"
+
+
+
+########### WORKING ###################
+  # - task: CmdLine@2
+    # displayName: 'Bump Version and Create Tag'
+    # inputs:
+        # script: |
+            # python ${{ parameters.reponame }}/version_bump.py \
+                # "${{ parameters.reponame }}" \
+                # "${{ parameters.branchname }}" \
+                # "$(System.AccessToken)" \
+                # "$(Build.SourceVersionMessage)"
